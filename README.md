@@ -52,7 +52,7 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 2. Install APK
 3. Import file to the phone
 4. Export file to the PC
-5. ADB commands ▸ (device info, battery, storage, RAM, IP/Wi-Fi, current app, installed apps, show/hide navigation bar, Wi-Fi/data on/off, clear cache, close background apps, custom command, reboot)
+5. ADB commands ▸ (device info, battery, storage, RAM, IP/Wi-Fi, current app, installed apps, show/hide navigation bar, Wi-Fi/data on/off, clear cache, close background apps, set battery to 100% / restore real battery, custom command, reboot)
 6. Open network settings
 7. Open Settings
 

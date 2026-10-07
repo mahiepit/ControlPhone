@@ -1119,6 +1119,9 @@ const ADB_PRESETS = [
   { label: 'Tắt dữ liệu di động', icon: 'stop', cmd: 'svc data disable && echo "Đã tắt dữ liệu"' },
   { label: 'Dọn bộ nhớ đệm (cache) ứng dụng', icon: 'eraser', cmd: 'pm trim-caches 999G && echo "Đã dọn cache"' },
   { label: 'Đóng ứng dụng chạy nền', icon: 'stop', cmd: 'am kill-all && echo "Đã đóng ứng dụng nền"' },
+  // chỉ giả lập mức pin hiển thị (giữ đến khi khôi phục hoặc khởi động lại máy)
+  { label: 'Đặt pin 100% (giả lập)', icon: 'zap', cmd: 'dumpsys battery set level 100 && echo "Đã đặt pin 100%"' },
+  { label: 'Khôi phục pin thật', icon: 'refresh', cmd: 'dumpsys battery reset && echo "Đã khôi phục pin thật"' },
 ];
 
 function adbMenu(d, x, y) {

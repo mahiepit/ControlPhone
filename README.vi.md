@@ -52,7 +52,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 2. Cài APK
 3. Nhập tệp vào máy
 4. Xuất tệp ra máy tính
-5. Lệnh ADB ▸ (thông tin máy, pin, bộ nhớ, RAM, IP/WiFi, ứng dụng đang mở, danh sách ứng dụng, ẩn/hiện thanh 3 nút, bật/tắt WiFi & dữ liệu, dọn cache, đóng app nền, lệnh tuỳ chỉnh, khởi động lại)
+5. Lệnh ADB ▸ (thông tin máy, pin, bộ nhớ, RAM, IP/WiFi, ứng dụng đang mở, danh sách ứng dụng, ẩn/hiện thanh 3 nút, bật/tắt WiFi & dữ liệu, dọn cache, đóng app nền, đặt pin 100% / khôi phục pin thật, lệnh tuỳ chỉnh, khởi động lại)
 6. Mở cài đặt mạng
 7. Mở Cài đặt
 
