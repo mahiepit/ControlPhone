@@ -1076,6 +1076,7 @@ function moreMenu(btn) {
     { label: 'Độ sáng màn hình…', icon: 'sun', onClick: dlgBrightness },
     '-',
     { label: 'USB → WiFi (giữ kết nối không dây)', icon: 'wifi', onClick: toWifi },
+    { label: 'WiFi → USB (tắt ADB qua WiFi)', icon: 'usb', onClick: () => toUsb(selIds()) },
     { label: 'Ngắt WiFi ADB', icon: 'wifioff', onClick: () => batch('disconnectwifi', selIds(), {}, 'Ngắt WiFi') },
     { label: 'ROOT: kiểm tra quyền root', icon: 'shield', onClick: () => batch('rootcheck', selIds(), {}, 'Kiểm tra root', { openResults: true }) },
     { label: 'ROOT: bật ADB WiFi cố định (cổng 5555)', icon: 'shield', onClick: rootAdbWifi },
@@ -1175,7 +1176,9 @@ function tileMenu(d, x, y) {
     { label: 'Xem ảnh chụp màn hình', icon: 'camera', onClick: () => window.open(`/api/shot?id=${encodeURIComponent(d.id)}`, '_blank') },
     { label: 'Mở bằng scrcpy gốc', icon: 'monitor', onClick: () => api('/api/scrcpy', { id: d.id }).then((r) => toast(r.msg)).catch((e) => toast(e.message, 'err')) },
     '-',
-    { label: 'USB → WiFi', icon: 'wifi', onClick: () => batch('tcpip', one, {}, 'USB → WiFi', { openResults: true }) },
+    d.transports.some((t) => t.type === 'wifi')
+      ? { label: 'WiFi → USB', icon: 'usb', onClick: () => toUsb(one) }
+      : { label: 'USB → WiFi', icon: 'wifi', onClick: () => batch('tcpip', one, {}, 'USB → WiFi', { openResults: true }) },
     { label: 'Kết nối lại luồng hình', icon: 'refresh', onClick: () => api('/api/restart', { ids: one }) },
     { label: 'Khởi động lại máy', icon: 'power', danger: true, onClick: async () => { if (await confirmBox('Khởi động lại', `Khởi động lại máy "${esc(displayName(d))}"?`, 'Khởi động lại', true)) batch('reboot', one, {}, 'Khởi động lại'); } },
   ]);
@@ -1223,6 +1226,13 @@ async function toWifi() {
   const ids = selIds();
   if (!ids.length) return;
   batch('tcpip', ids, {}, 'USB → WiFi', { openResults: true });
+}
+async function toUsb(ids) {
+  if (!ids.length) return;
+  // máy chỉ có WiFi (không cắm cáp) sẽ mất kết nối cho tới khi cắm USB
+  const wifiOnly = ids.filter((id) => !S.devices.get(id)?.transports.some((t) => t.type === 'usb')).length;
+  if (wifiOnly && !await confirmBox('WiFi → USB', `${wifiOnly} máy chưa cắm cáp USB sẽ mất kết nối cho tới khi cắm cáp. Tiếp tục?`, 'Chuyển về USB', true)) return;
+  batch('tousb', ids, {}, 'WiFi → USB', { openResults: true });
 }
 async function rootAdbWifi() {
   const ids = selIds();

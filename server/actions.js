@@ -141,6 +141,27 @@ const OPS = {
     return { ok, msg };
   },
 
+  // WiFi → USB: tắt ADB qua mạng (adb usb + tắt Gỡ lỗi không dây), ngắt kết nối WiFi, không tự nối lại nữa
+  async tousb(d) {
+    const wifi = [...d.transports.entries()].filter(([, t]) => t === 'wifi').map(([s]) => s);
+    const usb = [...d.transports.entries()].find(([, t]) => t === 'usb');
+    const meta = store.deviceMeta(d.id);
+    if (!wifi.length && !meta.wifi) return { ok: true, msg: 'Đang dùng USB' };
+    delete meta.wifi;
+    store.save();
+    // ưu tiên ra lệnh qua cáp USB (không bị mất kết nối giữa chừng)
+    const serial = usb ? usb[0] : d.activeSerial;
+    if (d.info.root) {
+      // bỏ cổng cố định của "ROOT: ADB WiFi cố định" (adbd chỉ nghe TCP khi cổng > 0)
+      await adb.shell(serial, "su -c 'setprop persist.adb.tcp.port 0' 2>&1", 10000).catch(() => {});
+    }
+    // Android 11+: tắt "Gỡ lỗi không dây"; adb usb: adbd khởi động lại chỉ nghe USB
+    await adb.shell(serial, 'settings put global adb_wifi_enabled 0 2>/dev/null', 8000).catch(() => {});
+    await adb.run([...adb.sel(serial), 'usb'], 10000);
+    for (const s of wifi) await adb.run(['disconnect', adb.parseAddr(s).serial], 8000);
+    return { ok: true, msg: usb ? 'Đã chuyển về USB' : 'Đã tắt ADB WiFi — cắm cáp USB để kết nối lại' };
+  },
+
   async disconnectwifi(d) {
     const wifi = [...d.transports.entries()].filter(([, t]) => t === 'wifi').map(([s]) => s);
     const meta = store.deviceMeta(d.id);
