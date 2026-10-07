@@ -118,6 +118,11 @@ const OPS = {
     const target = `${ip}:5555`;
     if ([...d.transports.keys()].includes(target)) return { ok: true, msg: 'đã có kết nối WiFi ' + target };
     if (d.transports.get(d.activeSerial) === 'usb') {
+      // adb tcpip khởi động lại adbd: máy root phải có khoá trong adb_keys trước, nếu không sẽ bị hỏi uỷ quyền lại
+      if (d.info.root) {
+        const k = await adb.persistAdbKey(d.activeSerial);
+        if (!k.ok) return { ok: false, msg: 'Chưa chuyển WiFi (tránh mất uỷ quyền): ' + k.msg };
+      }
       await adb.run([...adb.sel(d.activeSerial), 'tcpip', '5555'], 15000);
       await new Promise((r) => setTimeout(r, 2500));
     }

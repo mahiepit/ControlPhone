@@ -1075,7 +1075,7 @@ function moreMenu(btn) {
     { label: 'Luôn sáng khi cắm sạc: TẮT', icon: 'moon', onClick: () => batch('stayawake', selIds(), { on: false }, 'Tắt luôn sáng') },
     { label: 'Độ sáng màn hình…', icon: 'sun', onClick: dlgBrightness },
     '-',
-    { label: 'USB → WiFi (giữ kết nối không dây)', icon: 'wifi', onClick: toWifi },
+    { label: 'USB → WiFi (giữ kết nối không dây)', icon: 'wifi', onClick: () => toWifi() },
     { label: 'WiFi → USB (ngắt WiFi ADB)', icon: 'usb', onClick: () => toUsb(selIds()) },
     { label: 'ROOT: kiểm tra quyền root', icon: 'shield', onClick: () => batch('rootcheck', selIds(), {}, 'Kiểm tra root', { openResults: true }) },
     { label: 'ROOT: cấy khoá uỷ quyền (khỏi hỏi "Cho phép gỡ lỗi USB")', icon: 'key', onClick: () => batch('pushkey', selIds(), {}, 'Cấy khoá uỷ quyền', { openResults: true }) },
@@ -1178,7 +1178,7 @@ function tileMenu(d, x, y) {
     '-',
     d.transports.some((t) => t.type === 'wifi')
       ? { label: 'WiFi → USB', icon: 'usb', onClick: () => toUsb(one) }
-      : { label: 'USB → WiFi', icon: 'wifi', onClick: () => batch('tcpip', one, {}, 'USB → WiFi', { openResults: true }) },
+      : { label: 'USB → WiFi', icon: 'wifi', onClick: () => toWifi(one) },
     { label: 'Kết nối lại luồng hình', icon: 'refresh', onClick: () => api('/api/restart', { ids: one }) },
     { label: 'Khởi động lại máy', icon: 'power', danger: true, onClick: async () => { if (await confirmBox('Khởi động lại', `Khởi động lại máy "${esc(displayName(d))}"?`, 'Khởi động lại', true)) batch('reboot', one, {}, 'Khởi động lại'); } },
   ]);
@@ -1222,9 +1222,11 @@ async function rebootSel() {
   if (!ids.length) return;
   if (await confirmBox('Khởi động lại', `Khởi động lại ${ids.length} máy?`, 'Khởi động lại', true)) batch('reboot', ids, {}, 'Khởi động lại');
 }
-async function toWifi() {
-  const ids = selIds();
+async function toWifi(ids = selIds()) {
   if (!ids.length) return;
+  // adb tcpip khởi động lại adbd: máy root được cấy khoá tự động; máy không root chỉ an toàn nếu đã "Luôn cho phép"
+  const noRoot = ids.filter((id) => !S.devices.get(id)?.root).length;
+  if (noRoot && !await confirmBox('USB → WiFi', `${noRoot} máy không root: chuyển WiFi sẽ khởi động lại ADB trên máy. Nếu lúc cho phép gỡ lỗi chưa tick "Luôn cho phép từ máy tính này", máy sẽ hỏi uỷ quyền lại (máy không màn hình sẽ mất kết nối). Tiếp tục?`, 'Chuyển WiFi', true)) return;
   batch('tcpip', ids, {}, 'USB → WiFi', { openResults: true });
 }
 async function toUsb(ids) {
@@ -1600,7 +1602,7 @@ $('#btnConnect').onclick = async () => {
   toast(r.msg || (r.ok ? 'Đã kết nối' : 'Lỗi'), r.ok ? 'ok' : 'err', 5000);
 };
 $('#connAddr').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#btnConnect').click(); });
-$('#btnToWifi').onclick = toWifi;
+$('#btnToWifi').onclick = () => toWifi();
 $('#btnScan').onclick = async () => {
   const st = await api('/api/state');
   const sub = st.subnets[0]?.subnet || '192.168.1';
