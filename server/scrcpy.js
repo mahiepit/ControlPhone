@@ -23,7 +23,7 @@ function ensureServerPushed(serial) {
       size = parseInt(out.trim(), 10);
     } catch (_) { /* bỏ qua */ }
     if (size === SERVER_SIZE) return;
-    const r = await adb.run(['-s', serial, 'push', SERVER_LOCAL, SERVER_REMOTE], 120000);
+    const r = await adb.run([...adb.sel(serial), 'push', SERVER_LOCAL, SERVER_REMOTE], 120000);
     if (r.code !== 0) throw new Error('Không push được scrcpy-server: ' + (r.stderr || r.stdout).trim());
   })();
   pushPromises.set(serial, p);

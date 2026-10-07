@@ -442,4 +442,5 @@ export default {
   "Lệnh": "Command",
   "Pin": "Battery",
   "Theo pin": "By battery",
+  "Phát hiện nhiều máy trùng serial {0} — đã tách riêng từng máy": "Several phones share serial {0} — they are now listed separately",
 };

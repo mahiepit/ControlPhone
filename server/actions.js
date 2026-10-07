@@ -44,7 +44,7 @@ const OPS = {
 
   async install(d, ctx, p) {
     const file = uploadPath(p.token);
-    const r = await adb.run(['-s', d.activeSerial, 'install', '-r', '-d', file], 10 * 60 * 1000);
+    const r = await adb.run([...adb.sel(d.activeSerial), 'install', '-r', '-d', file], 10 * 60 * 1000);
     const out = outOf(r);
     return { ok: /Success/.test(out), msg: out.split('\n').slice(-2).join(' ') };
   },
@@ -58,7 +58,7 @@ const OPS = {
     const file = uploadPath(p.token);
     const dir = (p.dir || '/sdcard/Download/').replace(/\/?$/, '/');
     const remote = dir + (p.name || path.basename(file).replace(/^[0-9a-f]+-/, ''));
-    const r = await adb.run(['-s', d.activeSerial, 'push', file, remote], 10 * 60 * 1000);
+    const r = await adb.run([...adb.sel(d.activeSerial), 'push', file, remote], 10 * 60 * 1000);
     const ok = r.code === 0;
     if (ok) {
       const s = ctx.manager.controlSession(d);
@@ -91,7 +91,7 @@ const OPS = {
 
   async reboot(d, ctx, p) {
     const mode = ['recovery', 'bootloader'].includes(p.mode) ? p.mode : '';
-    await adb.run(['-s', d.activeSerial, 'reboot', ...(mode ? [mode] : [])], 20000);
+    await adb.run([...adb.sel(d.activeSerial), 'reboot', ...(mode ? [mode] : [])], 20000);
     return { ok: true, msg: 'đang khởi động lại' };
   },
 
@@ -118,7 +118,7 @@ const OPS = {
     const target = `${ip}:5555`;
     if ([...d.transports.keys()].includes(target)) return { ok: true, msg: 'đã có kết nối WiFi ' + target };
     if (d.transports.get(d.activeSerial) === 'usb') {
-      await adb.run(['-s', d.activeSerial, 'tcpip', '5555'], 15000);
+      await adb.run([...adb.sel(d.activeSerial), 'tcpip', '5555'], 15000);
       await new Promise((r) => setTimeout(r, 2500));
     }
     let r;
@@ -293,7 +293,8 @@ class Actions {
   launchScrcpy(serial, extra = [], title) {
     const exe = path.join(adb.VENDOR_DIR, 'scrcpy.exe');
     if (!fs.existsSync(exe)) throw new Error('Không thấy scrcpy.exe');
-    const args = [...(serial ? ['-s', serial] : []), ...extra];
+    // scrcpy.exe chỉ nhận serial (không nhận transport id)
+    const args = [...(serial ? ['-s', adb.parseAddr(serial).serial] : []), ...extra];
     if (title) args.push('--window-title', title);
     const child = spawn(exe, args, {
       cwd: adb.VENDOR_DIR, detached: true, stdio: 'ignore', windowsHide: false,

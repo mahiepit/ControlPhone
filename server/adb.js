@@ -92,7 +92,7 @@ function openService(serial, service, timeoutMs = 10000) {
     sock.on('data', onData);
     sock.on('error', fail);
     sock.on('close', onEarlyClose);
-    sock.on('connect', () => sock.write(encodeCmd(serial ? `host:transport:${serial}` : service)));
+    sock.on('connect', () => sock.write(encodeCmd(serial ? transportCmd(serial) : service)));
   });
 }
 
@@ -147,8 +147,10 @@ function startServer() {
 }
 
 /**
- * Theo dõi danh sách thiết bị theo thời gian thực (host:track-devices).
- * onChange([{serial, state}]) được gọi mỗi khi danh sách thay đổi. Tự kết nối lại.
+ * Theo dõi danh sách thiết bị theo thời gian thực (host:track-devices-l).
+ * onChange([{serial, state, tid}]) được gọi mỗi khi danh sách thay đổi. Tự kết nối lại.
+ * Nhiều máy có thể trùng serial (ROM nhân bản) → mỗi kết nối được phân biệt bằng transport id;
+ * khi serial bị trùng, địa chỉ của máy có dạng "serial@t<id>" (xem addrOf).
  */
 function trackDevices(onChange, onError) {
   let stopped = false;
@@ -156,7 +158,7 @@ function trackDevices(onChange, onError) {
   async function loop() {
     while (!stopped) {
       try {
-        sock = await openService(null, 'host:track-devices', 8000);
+        sock = await openService(null, 'host:track-devices-l', 8000);
         await new Promise((resolve) => {
           let buf = Buffer.alloc(0);
           sock.on('data', (d) => {
@@ -166,10 +168,15 @@ function trackDevices(onChange, onError) {
               if (Number.isNaN(len) || buf.length < 4 + len) break;
               const payload = buf.toString('utf8', 4, 4 + len);
               buf = buf.subarray(4 + len);
-              const list = payload.split('\n').filter(Boolean).map((line) => {
-                const [serial, state] = line.split('\t');
-                return { serial: serial.trim(), state: (state || '').trim() };
+              const raw = payload.split('\n').filter((l) => l.trim()).map((line) => {
+                // "<serial>   <state> product:x model:y device:z transport_id:N"
+                const parts = line.trim().split(/\s+/);
+                const m = line.match(/transport_id:(\d+)/);
+                return { serial: parts[0], state: parts[1] || '', tid: m ? m[1] : '' };
               });
+              const count = {};
+              for (const x of raw) count[x.serial] = (count[x.serial] || 0) + 1;
+              const list = raw.map((x) => ({ ...x, addr: count[x.serial] > 1 && x.tid ? `${x.serial}@t${x.tid}` : x.serial }));
               try { onChange(list); } catch (e) { if (onError) onError(e); }
             }
           });
@@ -189,7 +196,25 @@ function trackDevices(onChange, onError) {
   return () => { stopped = true; if (sock) sock.destroy(); };
 }
 
-function isWifiSerial(serial) {
+// địa chỉ "serial@t<id>" (serial bị trùng) → dùng transport id thay cho serial
+function parseAddr(addr) {
+  const m = /^(.*)@t(\d+)$/.exec(addr || '');
+  return m ? { serial: m[1], tid: m[2] } : { serial: addr, tid: null };
+}
+
+function transportCmd(addr) {
+  const { serial, tid } = parseAddr(addr);
+  return tid ? `host:transport-id:${tid}` : `host:transport:${serial}`;
+}
+
+/** Tham số chọn máy cho adb.exe: ['-s', serial] hoặc ['-t', id] khi serial bị trùng. */
+function sel(addr) {
+  const { serial, tid } = parseAddr(addr);
+  return tid ? ['-t', tid] : ['-s', serial];
+}
+
+function isWifiSerial(addr) {
+  const { serial } = parseAddr(addr);
   return /:\d+$/.test(serial) || serial.includes('._adb-tls-connect._tcp') || serial.startsWith('adb-');
 }
 
@@ -200,4 +225,5 @@ function shellQuote(s) {
 module.exports = {
   ADB_PATH, VENDOR_DIR, ROOT,
   openService, shell, execOut, execStream, run, startServer, trackDevices, isWifiSerial, shellQuote,
+  parseAddr, sel,
 };

@@ -138,11 +138,14 @@ export function ctxMenu(x, y, items) {
   el.style.left = Math.min(x, innerWidth - r.width - 8) + 'px';
   el.style.top = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
   ctxEl = el;
-  setTimeout(() => {
-    const off = (e) => { if (!el.contains(e.target)) { closeCtx(); document.removeEventListener('mousedown', off, true); } };
-    document.addEventListener('mousedown', off, true);
-  }, 0);
 }
+
+// Một bộ đóng menu duy nhất cho mọi menu: bấm ra ngoài menu đang mở thì đóng.
+// (Trước đây mỗi menu tự gắn bộ đóng riêng; mở menu con khiến bộ đóng cũ còn sót lại và
+// đóng nhầm menu mới ngay khi nhấn chuột → lệnh trong menu "không ăn".)
+document.addEventListener('mousedown', (e) => {
+  if (ctxEl && !ctxEl.contains(e.target)) closeCtx();
+}, true);
 
 export async function api(path, body) {
   const r = await fetch(path, {

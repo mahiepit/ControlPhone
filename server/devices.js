@@ -115,7 +115,9 @@ class DeviceManager extends EventEmitter {
 
   // ---------- theo dõi adb ----------
   _onTrack(list) {
-    const seen = new Map(list.map((x) => [x.serial, x.state]));
+    // khoá theo địa chỉ kết nối (serial, hoặc serial@t<id> khi nhiều máy trùng serial)
+    const seen = new Map(list.map((x) => [x.addr || x.serial, x.state]));
+    this.dupSerialCount = list.length - new Set(list.map((x) => x.serial)).size;
     // serial biến mất hoặc không còn ở trạng thái device
     for (const [serial, id] of [...this.serialToId.entries()]) {
       if (seen.get(serial) !== 'device') {
@@ -132,7 +134,8 @@ class DeviceManager extends EventEmitter {
         this.changed();
       }
     }
-    for (const { serial, state } of list) {
+    for (const { addr, serial: rawSerial, state } of list) {
+      const serial = addr || rawSerial;
       if (state === 'device') {
         if (!this.serialToId.has(serial) && !this.probing.has(serial)) this._probe(serial);
       } else {
@@ -163,7 +166,7 @@ class DeviceManager extends EventEmitter {
           out = await adb.shell(serial, [
             'getprop ro.serialno', 'getprop ro.product.model', 'getprop ro.product.manufacturer',
             'getprop ro.build.version.release', 'getprop ro.build.version.sdk',
-            'echo "SU=$(which su 2>/dev/null)"', 'echo "UID=$(id -u)"',
+            'echo "SU=$(which su 2>/dev/null)"', 'echo "UID=$(id -u)"', 'echo "AID=$(settings get secure android_id 2>/dev/null)"',
           ].join('; '), 10000);
           break;
         } catch (e) {
@@ -173,12 +176,14 @@ class DeviceManager extends EventEmitter {
       if (!out) throw new Error('không đọc được thông tin');
       if (this.serialStates.get(serial) !== 'device') return;
       const lines = out.split('\n').map((s) => s.trim());
-      let hwId = lines[0] || serial;
-      if (!hwId || hwId === 'unknown') hwId = serial;
+      const aidM = out.match(/AID=([0-9a-f]{6,})/i);
+      const androidId = aidM ? aidM[1].toLowerCase() : '';
+      const type = adb.isWifiSerial(serial) ? 'wifi' : 'usb';
       const info = {
         model: lines[1], manufacturer: lines[2], android: lines[3], sdk: parseInt(lines[4], 10) || 0,
-        root: /SU=\S+/.test(out) || /UID=0/.test(out),
+        root: /SU=\S+/.test(out) || /UID=0/.test(out), androidId,
       };
+      const hwId = this._resolveId(lines[0], androidId, type, serial);
       this.devices.delete('pending:' + serial);
       let d = this.devices.get(hwId);
       if (!d) {
@@ -186,10 +191,10 @@ class DeviceManager extends EventEmitter {
         this.devices.set(hwId, d);
       }
       Object.assign(d.info, info);
-      const type = adb.isWifiSerial(serial) ? 'wifi' : 'usb';
       d.transports.set(serial, type);
       this.serialToId.set(serial, hwId);
-      store.deviceMeta(hwId);
+      const meta = store.deviceMeta(hwId);
+      if (androidId && meta.androidId !== androidId) { meta.androidId = androidId; store.save(); }
       if (type === 'wifi') this._rememberWifi(hwId, serial);
       this._chooseTransport(d);
       this.refreshInfo(d);
@@ -199,6 +204,47 @@ class DeviceManager extends EventEmitter {
     } finally {
       this.probing.delete(serial);
     }
+  }
+
+  /**
+   * Định danh ổn định cho một máy. Thường là ro.serialno (để gộp USB + WiFi của cùng một máy).
+   * Nhiều máy chạy ROM nhân bản có CÙNG serial → phân biệt thêm bằng Android ID ("serial#androidId").
+   */
+  _resolveId(serialno, aid, type, addr) {
+    const dup = store.state.dupSerials || (store.state.dupSerials = []);
+    serialno = (serialno || '').trim();
+    if (!serialno || serialno === 'unknown') return aid ? 'aid:' + aid : addr;
+    const keyed = (a) => `${serialno}#${(a || addr).slice(0, 12)}`;
+    if (dup.includes(serialno)) return keyed(aid);
+    const live = this.devices.get(serialno);
+    const meta = store.state.devices[serialno];
+    const otherAid = (live && live.info.androidId) || (meta && meta.androidId) || '';
+    if (aid && otherAid && otherAid !== aid) {
+      // 2 máy khác nhau trùng serial → từ nay mỗi máy dùng id riêng (giữ tên/số của máy cũ)
+      dup.push(serialno);
+      store.save();
+      this._rekey(serialno, keyed(otherAid));
+      this.emit('log', 'warn', `Phát hiện nhiều máy trùng serial ${serialno} — đã tách riêng từng máy`);
+      return keyed(aid);
+    }
+    // ROM nhân bản hoàn toàn (trùng cả Android ID) mà đang có 2 kết nối USB cùng lúc → vẫn tách ra
+    if (live && type === 'usb' && [...live.transports.values()].includes('usb')) return `${serialno}~${addr}`;
+    return serialno;
+  }
+
+  _rekey(oldId, newId) {
+    const all = store.state.devices;
+    if (all[oldId]) { if (!all[newId]) all[newId] = all[oldId]; delete all[oldId]; }
+    if (store.state.solo) store.state.solo = store.state.solo.map((x) => (x === oldId ? newId : x));
+    const d = this.devices.get(oldId);
+    if (d) {
+      this.devices.delete(oldId);
+      d.id = newId;
+      this.devices.set(newId, d);
+      for (const s of d.transports.keys()) this.serialToId.set(s, newId);
+    }
+    store.save();
+    this.changed();
   }
 
   _rememberWifi(hwId, serial) {

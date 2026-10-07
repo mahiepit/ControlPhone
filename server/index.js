@@ -291,9 +291,14 @@ const API = {
   },
 
   'POST /api/num': (b) => {
+    if (!manager.get(b.id) || manager.get(b.id).pending) throw new Error('Thiết bị không trực tuyến');
     const meta = store.deviceMeta(b.id);
     const n = parseInt(b.num, 10);
     if (!(n > 0)) throw new Error('Số không hợp lệ');
+    // số đã có máy khác dùng → 2 máy đổi số cho nhau (tránh 2 máy trùng số)
+    for (const [id, m] of Object.entries(store.state.devices)) {
+      if (id !== b.id && m.num === n) m.num = meta.num;
+    }
     meta.num = n;
     store.state.nextNum = Math.max(store.state.nextNum, n + 1);
     store.save();

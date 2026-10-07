@@ -200,6 +200,7 @@
  "Nếu phần mềm giúp ích cho bạn, hãy ủng hộ để tác giả có thêm động lực duy trì và phát triển. Cảm ơn bạn!",
  "Nội dung (hỗ trợ tiếng Việt, emoji). Hãy chạm vào ô nhập trên điện thoại trước.",
  "OTG (scrcpy --otg) điều khiển điện thoại qua USB như bàn phím và chuột vật lý, không cần bật Gỡ lỗi USB.",
+ "Phát hiện nhiều máy trùng serial {0} — đã tách riêng từng máy",
  "Phóng to #",
  "Phóng to #{0}",
  "Phản hồi adb không hợp lệ:",

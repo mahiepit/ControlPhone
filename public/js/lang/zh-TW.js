@@ -442,4 +442,5 @@ export default {
   "Lệnh": "指令",
   "Pin": "電池",
   "Theo pin": "依電量",
+  "Phát hiện nhiều máy trùng serial {0} — đã tách riêng từng máy": "發現多台手機序號相同 {0} — 已分別顯示",
 };

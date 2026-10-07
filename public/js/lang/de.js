@@ -442,4 +442,5 @@ export default {
   "Lệnh": "Befehl",
   "Pin": "Akku",
   "Theo pin": "Nach Akku",
+  "Phát hiện nhiều máy trùng serial {0} — đã tách riêng từng máy": "Mehrere Geräte mit gleicher Seriennummer {0} — werden jetzt getrennt angezeigt",
 };

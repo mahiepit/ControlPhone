@@ -442,4 +442,5 @@ export default {
   "Lệnh": "Commande",
   "Pin": "Batterie",
   "Theo pin": "Par batterie",
+  "Phát hiện nhiều máy trùng serial {0} — đã tách riêng từng máy": "Plusieurs appareils partagent le numéro de série {0} — ils sont maintenant affichés séparément",
 };
