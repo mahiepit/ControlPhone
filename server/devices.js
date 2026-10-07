@@ -54,6 +54,9 @@ class DeviceManager extends EventEmitter {
     this.probing = new Set();
     this.startLimiter = new Limiter(store.settings.maxParallelStart || 6);
     this.infoLimiter = new Limiter(8);
+    this.probeLimiter = new Limiter(8);
+    this.probeErrors = new Map(); // addr → lỗi đọc thông tin gần nhất
+    this.lastTrack = [];
     this.changedTimer = null;
   }
 
@@ -117,6 +120,7 @@ class DeviceManager extends EventEmitter {
   _onTrack(list) {
     // khoá theo địa chỉ kết nối (serial, hoặc serial@t<id> khi nhiều máy trùng serial)
     const seen = new Map(list.map((x) => [x.addr || x.serial, x.state]));
+    this.lastTrack = list;
     this.dupSerialCount = list.length - new Set(list.map((x) => x.serial)).size;
     // serial biến mất hoặc không còn ở trạng thái device
     for (const [serial, id] of [...this.serialToId.entries()]) {
@@ -129,7 +133,10 @@ class DeviceManager extends EventEmitter {
     }
     // placeholder cho các máy chưa authorize / offline
     for (const [id, d] of [...this.devices.entries()]) {
-      if (d.pending && seen.get(d.activeSerial) !== d.status) {
+      const st = seen.get(d.activeSerial);
+      const probeErrorStillValid = d.status === 'error' && st === 'device'; // ô "đang thử lại" giữ nguyên
+      if (d.pending && !probeErrorStillValid && st !== d.status) {
+        clearTimeout(d.retryTimer);
         this.devices.delete(id);
         this.changed();
       }
@@ -160,21 +167,29 @@ class DeviceManager extends EventEmitter {
   async _probe(serial) {
     this.probing.add(serial);
     try {
-      let out = '';
-      for (let i = 0; i < 3; i++) {
-        try {
-          out = await adb.shell(serial, [
-            'getprop ro.serialno', 'getprop ro.product.model', 'getprop ro.product.manufacturer',
-            'getprop ro.build.version.release', 'getprop ro.build.version.sdk',
-            'echo "SU=$(which su 2>/dev/null)"', 'echo "UID=$(id -u)"', 'echo "AID=$(settings get secure android_id 2>/dev/null)"',
-          ].join('; '), 10000);
-          break;
-        } catch (e) {
-          await sleep(1000);
+      // hỏi theo lô (tránh 40–100 máy cùng lúc làm máy bận trả lời quá hạn)
+      const out = await this.probeLimiter.run(async () => {
+        let text = '';
+        let lastErr = null;
+        for (let i = 0; i < 3 && !text; i++) {
+          try {
+            text = await adb.shell(serial, [
+              'getprop ro.serialno', 'getprop ro.product.model', 'getprop ro.product.manufacturer',
+              'getprop ro.build.version.release', 'getprop ro.build.version.sdk',
+              'echo "SU=$(which su 2>/dev/null)"', 'echo "UID=$(id -u)"',
+            ].join('; '), 20000);
+          } catch (e) {
+            lastErr = e;
+            await sleep(1500);
+          }
         }
-      }
-      if (!out) throw new Error('không đọc được thông tin');
+        if (!text) throw lastErr || new Error('không đọc được thông tin');
+        // Android ID đọc riêng: nếu chậm/lỗi vẫn nhận máy bình thường
+        try { text += await adb.shell(serial, 'echo "AID=$(settings get secure android_id 2>/dev/null)"', 15000); } catch (_) { /* bỏ qua */ }
+        return text;
+      });
       if (this.serialStates.get(serial) !== 'device') return;
+      this._clearProbeError(serial);
       const lines = out.split('\n').map((s) => s.trim());
       const aidM = out.match(/AID=([0-9a-f]{6,})/i);
       const androidId = aidM ? aidM[1].toLowerCase() : '';
@@ -200,10 +215,63 @@ class DeviceManager extends EventEmitter {
       this.refreshInfo(d);
       this.changed();
     } catch (e) {
-      this.emit('log', 'warn', `Không nhận diện được ${serial}: ${e.message}`);
+      this._setProbeError(serial, e.message);
     } finally {
       this.probing.delete(serial);
     }
+  }
+
+  // Máy chưa đọc được thông tin: hiện ô báo lỗi (không bao giờ bỏ máy im lặng) và tự thử lại
+  _setProbeError(serial, msg) {
+    const pid = 'pending:' + serial;
+    let d = this.devices.get(pid);
+    if (!d) {
+      d = new Device(pid);
+      d.pending = true;
+      d.activeSerial = serial;
+      d.transports.set(serial, adb.isWifiSerial(serial) ? 'wifi' : 'usb');
+      d.info.model = serial;
+      this.devices.set(pid, d);
+    }
+    d.status = 'error';
+    d.probeFails = (d.probeFails || 0) + 1;
+    d.error = `Không đọc được thông tin máy (${msg}) — đang thử lại…`;
+    this.probeErrors.set(serial, msg);
+    this.changed();
+    const delay = Math.min(5000 * d.probeFails, 30000);
+    clearTimeout(d.retryTimer);
+    d.retryTimer = setTimeout(() => {
+      if (this.serialStates.get(serial) === 'device' && !this.serialToId.has(serial) && !this.probing.has(serial)) this._probe(serial);
+    }, delay);
+  }
+
+  _clearProbeError(serial) {
+    this.probeErrors.delete(serial);
+    const d = this.devices.get('pending:' + serial);
+    if (d) { clearTimeout(d.retryTimer); this.devices.delete('pending:' + serial); this.changed(); }
+  }
+
+  /** Bảng chẩn đoán: mọi kết nối adb và ô tương ứng trên màn hình. */
+  diagnostics() {
+    const rows = [];
+    for (const x of this.lastTrack || []) {
+      const addr = x.addr || x.serial;
+      const id = this.serialToId.get(addr);
+      const d = id ? this.devices.get(id) : this.devices.get('pending:' + addr);
+      rows.push({
+        addr, serial: x.serial, state: x.state, tid: x.tid,
+        device: d ? { id: d.id, num: d.pending ? null : store.deviceMeta(d.id).num, status: d.status, active: d.activeSerial === addr } : null,
+        probing: this.probing.has(addr),
+        error: this.probeErrors.get(addr) || (d && d.status !== 'online' ? d.error : ''),
+      });
+    }
+    return {
+      adbConnections: rows.length,
+      deviceConnections: rows.filter((r) => r.state === 'device').length,
+      tiles: this.list().length,
+      duplicateSerials: this.dupSerialCount || 0,
+      rows,
+    };
   }
 
   /**

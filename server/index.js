@@ -255,6 +255,8 @@ function deviceFrom(id) {
   return d;
 }
 
+let adbVersion = '';
+
 const API = {
   'GET /api/state': () => ({ ...devicesMessage(), settings: store.settings, adb: adb.ADB_PATH, subnets: actions.localSubnets(), wifiHistory: store.state.wifiHistory }),
 
@@ -341,6 +343,10 @@ const API = {
   'POST /api/connect': (b) => actions.connect(b.addr),
   'POST /api/pair': (b) => actions.pair(b.addr, b.code),
   'POST /api/scan': (b) => actions.scan(b.subnet, b.port || 5555),
+  'GET /api/diag': async () => {
+    if (!adbVersion) adbVersion = (await adb.run(['version'], 10000)).stdout.split('\n').slice(0, 2).join(' ').trim();
+    return { ...manager.diagnostics(), adbPath: adb.ADB_PATH, adbVersion };
+  },
   'POST /api/pause': (b) => ({ ok: true, changed: manager.setPaused(b.ids || [], !!b.paused) }),
   'POST /api/solo': (b) => ({ ok: true, solo: manager.setSolo(b.ids || null) }),
   'POST /api/remove-offline': () => { manager.removeOffline(); return { ok: true }; },

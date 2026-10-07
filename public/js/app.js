@@ -1651,6 +1651,52 @@ $('#btnAdbRestart').onclick = async () => {
   toast('ADB đã khởi động lại', 'ok');
 };
 $('#btnRemoveOffline').onclick = () => api('/api/remove-offline', {}).then(() => toast('Đã xoá các máy mất kết nối khỏi danh sách'));
+
+// Chẩn đoán: so sánh các kết nối adb nhìn thấy với các ô trên màn hình (tìm máy bị thiếu)
+$('#btnDiag').onclick = dlgDiag;
+async function dlgDiag() {
+  const m = modal({
+    title: 'Chẩn đoán kết nối',
+    wide: true,
+    body: '<div id="dg"><div class="note">Đang tải…</div></div>',
+    actions: [
+      { label: `${icon('refresh')} Làm mới`, onClick: () => { load(); return false; } },
+      { label: `${icon('copy')} Sao chép báo cáo`, onClick: () => { copyReport(); return false; } },
+      { label: 'Đóng', primary: true },
+    ],
+  });
+  let last = null;
+  const load = async () => {
+    try { last = await api('/api/diag'); } catch (e) { $('#dg', m.el).innerHTML = `<div class="note warn">${esc(e.message)}</div>`; return; }
+    const r = last;
+    const rows = r.rows.map((x) => {
+      const tile = x.device && x.device.num ? `#${String(x.device.num).padStart(2, '0')}` : '—';
+      const ok = x.state === 'device' && x.device && x.device.status === 'online';
+      return `<div class="li"><span class="ic" style="color:${ok ? 'var(--ok)' : 'var(--warn)'}">${icon(ok ? 'check' : 'info')}</span>
+        <span class="nm" data-no-i18n style="font-family:Consolas,monospace">${esc(x.addr)}</span>
+        <span class="meta" data-no-i18n>${esc(x.state)}${x.tid ? ' · t' + esc(x.tid) : ''}</span>
+        <span class="meta" data-no-i18n style="min-width:42px;text-align:right">${tile}</span>
+        <span class="meta" style="max-width:340px;overflow:hidden;text-overflow:ellipsis" title="${esc(x.error || '')}">${x.probing ? esc('Đang đọc thông tin…') : esc(x.error || (x.device ? x.device.status : 'Chưa có ô'))}</span></div>`;
+    }).join('');
+    $('#dg', m.el).innerHTML = `<div class="kv">
+        <div>Kết nối ADB</div><div data-no-i18n><b>${r.adbConnections}</b></div>
+        <div>Máy sẵn sàng</div><div data-no-i18n><b>${r.deviceConnections}</b></div>
+        <div>Số ô trên màn hình</div><div data-no-i18n><b>${r.tiles}</b></div>
+        <div>Serial bị trùng</div><div data-no-i18n><b>${r.duplicateSerials}</b></div>
+      </div>
+      <div class="note" data-no-i18n>${esc(r.adbPath)}<br>${esc(r.adbVersion)}</div>
+      <div class="note">Nếu thiếu máy: chụp bảng này hoặc bấm Sao chép báo cáo rồi gửi cho tác giả.</div>
+      <div class="list">${rows || '<div class="li">—</div>'}</div>`;
+  };
+  const copyReport = () => {
+    if (!last) return;
+    const lines = [`ControlPhone diag — adb=${last.adbConnections} device=${last.deviceConnections} tiles=${last.tiles} dupSerials=${last.duplicateSerials}`,
+      last.adbPath, last.adbVersion,
+      ...last.rows.map((x) => `${x.addr}\t${x.state}\tt${x.tid}\t${x.device ? (x.device.num ? '#' + x.device.num : x.device.id) + ' ' + x.device.status : '-'}\t${x.error || ''}`)];
+    navigator.clipboard.writeText(lines.join('\n')).then(() => toast('Đã sao chép báo cáo', 'ok')).catch(() => toast('Không đọc được clipboard', 'err'));
+  };
+  load();
+}
 $('#btnNewGroup').onclick = async () => {
   const name = await promptBox('Tạo nhóm', 'Tên nhóm', '', 'vd: Nhóm A');
   if (name && name.trim()) {
