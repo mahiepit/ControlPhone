@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ControlPhone</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='5' y='2' width='14' height='20' rx='3' fill='%233b8cff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <button class="btn icon ghost" id="btnSidebar" title="Ẩn/hiện thanh bên"><i data-icon="sidebar"></i></button>
+    <div class="brand"><div class="logo"><i data-icon="phone"></i></div>ControlPhone</div>
+    <div class="stat" title="Máy đang hoạt động / tổng"><span class="dot"></span><b id="statOnline">0</b>/<span id="statTotal">0</span> online</div>
+    <div class="stat sel-stat" title="Số máy đang chọn"><b id="statSel">0</b> đã chọn</div>
+    <div class="stat sel-stat" title="Tổng băng thông video từ tất cả điện thoại"><i data-icon="download"></i><b id="statBw">0</b></div>
+    <button class="sync-btn" id="syncBtn" title="Tự động đồng bộ khi chọn từ 2 máy trở lên (F3 để tắt tạm)">
+      <span class="sw"></span><span>Đồng bộ<b id="syncCount"></b></span>
+    </button>
+    <button class="btn solo-btn hidden" id="soloBtn" title="Đang chỉ hiển thị một số máy (các máy khác tạm dừng xem). Bấm để hiện lại tất cả"><i data-icon="eye"></i>Chỉ hiển thị <b id="soloCount">0</b> máy<i data-icon="x"></i></button>
+    <div class="spacer"></div>
+    <button class="btn ghost" id="btnLive" title="Tạm dừng/tiếp tục hiển thị TẤT CẢ máy trên máy tính. Muốn tạm dừng riêng 1 máy hoặc 1 nhóm: chuột phải vào máy → Tạm dừng xem"><i data-icon="eye"></i><span>Đang xem</span></button>
+    <div class="range" title="Kích thước ô"><i data-icon="grid"></i><input type="range" id="tileSize" min="110" max="460" step="2"></div>
+    <button class="btn icon ghost" id="btnFit" title="Vừa khít màn hình"><i data-icon="fit"></i></button>
+    <select class="inp" id="sortBy" title="Sắp xếp">
+      <option value="num">Theo số thứ tự</option>
+      <option value="name">Theo tên</option>
+      <option value="status">Theo trạng thái</option>
+      <option value="battery">Theo pin</option>
+    </select>
+    <select class="inp lang-sel" id="langSel" title="Ngôn ngữ / Language" data-no-i18n></select>
+    <button class="btn ghost donate-btn" id="btnDonate" title="Ủng hộ tác giả"><i data-icon="heart"></i><span>Ủng hộ</span></button>
+    <button class="btn icon ghost" id="btnTheme" title="Sáng/Tối"><i data-icon="moon"></i></button>
+    <button class="btn icon ghost" id="btnSettings" title="Cài đặt"><i data-icon="settings"></i></button>
+  </header>
+
+  <aside class="sidebar">
+    <div class="search"><i data-icon="search"></i><input class="inp" id="search" placeholder="Tìm số, tên, IP, serial…"></div>
+    <div>
+      <h4>Bộ lọc</h4>
+      <div class="filters" id="filters"></div>
+    </div>
+    <div>
+      <h4>Nhóm <button class="btn icon ghost sm" id="btnNewGroup" title="Tạo nhóm"><i data-icon="plus"></i></button></h4>
+      <div class="filters" id="groups"></div>
+    </div>
+    <div>
+      <h4>Kết nối</h4>
+      <div class="conn">
+        <div class="row"><input class="inp" id="connAddr" placeholder="192.168.1.10:5555" list="wifiHist"><button class="btn primary" id="btnConnect" title="Kết nối qua WiFi"><i data-icon="wifi"></i></button></div>
+        <datalist id="wifiHist"></datalist>
+        <button class="btn block" id="btnToWifi"><i data-icon="wifi"></i>USB → WiFi (máy đã chọn)</button>
+        <button class="btn block" id="btnScan"><i data-icon="scan"></i>Quét mạng LAN</button>
+        <button class="btn block" id="btnPair"><i data-icon="key"></i>Ghép nối mã (Android 11+)</button>
+        <button class="btn block" id="btnOtg"><i data-icon="usb"></i>Chế độ OTG (scrcpy)</button>
+        <button class="btn block" id="btnAdbRestart"><i data-icon="refresh"></i>Khởi động lại ADB</button>
+        <button class="btn block" id="btnRemoveOffline"><i data-icon="eraser"></i>Xoá máy mất kết nối</button>
+      </div>
+    </div>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
+
+  <main>
+    <div class="actionbar" id="actionbar">
+      <span class="label">Áp dụng cho <b id="abCount">0</b> máy:</span>
+      <button class="btn icon" data-sel="all" title="Chọn tất cả (Ctrl+A)"><i data-icon="checksq"></i></button>
+      <button class="btn icon" data-sel="none" title="Bỏ chọn (Esc)"><i data-icon="square"></i></button>
+      <button class="btn icon" data-sel="invert" title="Đảo chọn"><i data-icon="invert"></i></button>
+      <span class="sep"></span>
+      <button class="btn icon" data-act="back" title="Quay lại"><i data-icon="back"></i></button>
+      <button class="btn icon" data-act="home" title="Màn hình chính"><i data-icon="home"></i></button>
+      <button class="btn icon" data-act="recents" title="Đa nhiệm"><i data-icon="recents"></i></button>
+      <button class="btn icon" data-act="power" title="Nút nguồn"><i data-icon="power"></i></button>
+      <button class="btn icon" data-act="voldown" title="Giảm âm lượng"><i data-icon="voldown"></i></button>
+      <button class="btn icon" data-act="volup" title="Tăng âm lượng"><i data-icon="volup"></i></button>
+      <button class="btn icon" data-act="unlock" title="Bật màn hình + vuốt mở khoá"><i data-icon="unlock"></i></button>
+      <button class="btn icon" data-act="screenoff" title="Tắt màn hình thật (vẫn xem được, tiết kiệm pin)"><i data-icon="screenoff"></i></button>
+      <button class="btn icon" data-act="screenon" title="Bật lại màn hình thật"><i data-icon="sun"></i></button>
+      <span class="sep"></span>
+      <button class="btn" data-cmd="text" title="Gửi văn bản (hỗ trợ tiếng Việt)"><i data-icon="type"></i>Văn bản</button>
+      <button class="btn" data-cmd="paste" title="Dán clipboard máy tính vào tất cả máy đang chọn (Ctrl+V)"><i data-icon="clipboard"></i>Dán</button>
+      <button class="btn" data-cmd="apps" title="Mở / dừng / gỡ ứng dụng"><i data-icon="apps"></i>Ứng dụng</button>
+      <button class="btn" data-cmd="apk" title="Cài APK (hoặc kéo thả file .apk vào cửa sổ)"><i data-icon="package"></i>Cài APK</button>
+      <button class="btn" data-cmd="push" title="Gửi tệp vào điện thoại"><i data-icon="upload"></i>Gửi tệp</button>
+      <button class="btn" data-cmd="url" title="Mở đường dẫn"><i data-icon="link"></i>URL</button>
+      <button class="btn" data-cmd="shell" title="Chạy lệnh ADB shell"><i data-icon="terminal"></i>Shell</button>
+      <button class="btn" data-cmd="shot" title="Chụp màn hình các máy đã chọn"><i data-icon="camera"></i>Chụp</button>
+      <button class="btn icon" data-cmd="more" title="Thêm"><i data-icon="more"></i></button>
+    </div>
+    <div class="grid-wrap" id="gridWrap">
+      <div class="grid" id="grid"></div>
+      <div class="empty hidden" id="empty"></div>
+    </div>
+  </main>
+
+  <section class="viewer hidden" id="viewer">
+    <div class="viewer-head">
+      <button class="btn icon ghost" id="vPrev" title="Máy trước"><i data-icon="left"></i></button>
+      <div class="title"><b id="vTitle">—</b><span id="vSub"></span></div>
+      <span class="sync-hint hidden" id="vSync"></span>
+      <button class="btn icon ghost" id="vNext" title="Máy sau"><i data-icon="right"></i></button>
+      <button class="btn icon ghost" id="vClose" title="Đóng (Esc)"><i data-icon="x"></i></button>
+    </div>
+    <div class="viewer-body">
+      <div class="viewer-screen" id="vScreen" tabindex="0">
+        <canvas id="vCanvas"></canvas>
+        <div class="ov" id="vOv"><div class="spin"></div><span>Đang mở luồng nét…</span></div>
+      </div>
+      <div class="vtools">
+        <button class="btn" data-vact="back" title="Quay lại (chuột phải)"><i data-icon="back"></i></button>
+        <button class="btn" data-vact="home" title="Màn hình chính (chuột giữa)"><i data-icon="home"></i></button>
+        <button class="btn" data-vact="recents" title="Đa nhiệm"><i data-icon="recents"></i></button>
+        <div class="gap"></div>
+        <button class="btn" data-vact="power" title="Nguồn"><i data-icon="power"></i></button>
+        <button class="btn" data-vact="volup" title="Tăng âm lượng"><i data-icon="volup"></i></button>
+        <button class="btn" data-vact="voldown" title="Giảm âm lượng"><i data-icon="voldown"></i></button>
+        <button class="btn" data-vact="rotate" title="Xoay màn hình"><i data-icon="rotate"></i></button>
+        <div class="gap"></div>
+        <button class="btn" data-vact="notif" title="Kéo thanh thông báo"><i data-icon="bell"></i></button>
+        <button class="btn" data-vact="unlock" title="Bật màn hình + vuốt mở khoá"><i data-icon="unlock"></i></button>
+        <button class="btn" data-vact="screenoff" title="Tắt màn hình thật (vẫn xem)"><i data-icon="screenoff"></i></button>
+        <button class="btn" data-vact="screenon" title="Bật màn hình thật"><i data-icon="sun"></i></button>
+        <div class="gap"></div>
+        <button class="btn" data-vcmd="paste" title="Dán clipboard máy tính (Ctrl+V)"><i data-icon="clipboard"></i></button>
+        <button class="btn" data-vcmd="shot" title="Chụp và tải ảnh"><i data-icon="camera"></i></button>
+      </div>
+    </div>
+    <div class="viewer-foot">
+      <button class="btn sm" data-vcmd="apps"><i data-icon="apps"></i>Ứng dụng</button>
+      <button class="btn sm" data-vcmd="files"><i data-icon="folder"></i>Tệp</button>
+      <button class="btn sm" data-vcmd="info"><i data-icon="info"></i>Thông tin</button>
+      <button class="btn sm" data-vcmd="scrcpy" title="Mở cửa sổ scrcpy gốc"><i data-icon="monitor"></i>scrcpy</button>
+    </div>
+  </section>
+</div>
+
+<div class="tasks" id="tasks"></div>
+<div class="toasts" id="toasts"></div>
+<input type="file" id="fileApk" accept=".apk,.apks,.xapk" multiple hidden>
+<input type="file" id="fileAny" multiple hidden>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

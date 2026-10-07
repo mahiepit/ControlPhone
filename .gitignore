@@ -1,0 +1,17 @@
+# dữ liệu riêng của người dùng — KHÔNG đưa lên git
+data/
+screenshots/
+*.log
+
+# phụ thuộc / bản dựng
+node_modules/
+vendor/
+node/
+dist/
+
+# công cụ phát triển cục bộ
+.claude/
+.vscode/
+*.tmp
+Thumbs.db
+desktop.ini

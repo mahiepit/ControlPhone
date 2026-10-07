@@ -1,0 +1,26 @@
+{
+  "name": "controlphone",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Free, open-source multi-phone Android control center: live screen grid, group sync control, ADB tools. Unlimited devices, no ads, lightweight. Built on scrcpy.",
+  "license": "MIT",
+  "author": "Thảo Gia (https://github.com/mahiepit)",
+  "homepage": "https://github.com/mahiepit/ControlPhone",
+  "repository": { "type": "git", "url": "https://github.com/mahiepit/ControlPhone.git" },
+  "keywords": ["android", "scrcpy", "adb", "device-lab", "multi-device", "screen-mirroring", "remote-control", "device-management"],
+  "main": "server/index.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server/index.js --open",
+    "setup": "node tools/setup.js",
+    "i18n:check": "node tools/i18n-extract.js",
+    "pack": "node tools/pack.js"
+  },
+  "dependencies": {
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "acorn": "^8.14.0",
+    "acorn-walk": "^8.3.4"
+  }
+}
