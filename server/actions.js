@@ -178,6 +178,12 @@ const OPS = {
     return { ok, msg: ok ? `Đã bật ADB WiFi cố định: ${ip}:5555` : `Đã đặt cổng 5555 nhưng không kết nối được (${outOf(r)}). ROM có thể chặn ADB TCP.` };
   },
 
+  // Cấy khoá uỷ quyền của PC vào máy (cần root) → không bao giờ hỏi "Cho phép gỡ lỗi USB" lại
+  async pushkey(d) {
+    if (!d.info.root) return { ok: false, msg: 'Máy không có root — hãy tick "Luôn cho phép từ máy tính này" một lần trên máy' };
+    return adb.persistAdbKey(d.activeSerial);
+  },
+
   async rootcheck(d) {
     const out = await adb.shell(d.activeSerial, "su -c 'id' 2>&1", 15000).catch((e) => e.message);
     const ok = /uid=0/.test(out);

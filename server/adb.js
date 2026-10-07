@@ -218,6 +218,38 @@ function isWifiSerial(addr) {
   return /:\d+$/.test(serial) || serial.includes('._adb-tls-connect._tcp') || serial.startsWith('adb-');
 }
 
+// Khoá công khai mà adb server này dùng để uỷ quyền (RSA). Dùng để "cấy" vào máy.
+function pubKeyPath() {
+  const home = process.env.USERPROFILE || process.env.HOME || require('os').homedir();
+  for (const p of [process.env.ANDROID_VENDOR_KEYS, path.join(home, '.android', 'adbkey.pub')]) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return '';
+}
+
+/**
+ * Cấy khoá công khai của PC vào /data/misc/adb/adb_keys (CẦN ROOT) để máy luôn tin máy tính này —
+ * như tick "Luôn cho phép", nhưng không cần màn hình và còn sau khi adbd/khởi động lại. Không khởi động lại adbd.
+ * Trả về {ok, msg}. Gộp thêm (không xoá khoá PC khác đã có).
+ */
+async function persistAdbKey(serial) {
+  const pub = pubKeyPath();
+  if (!pub) return { ok: false, msg: 'Không thấy khoá adbkey.pub của máy tính' };
+  const frag = fs.readFileSync(pub, 'utf8').trim().split(/\s+/)[0].slice(40, 80); // đoạn giữa để nhận diện
+  const tmp = '/data/local/tmp/.cp_adbkey.pub';
+  const push = await run([...sel(serial), 'push', pub, tmp], 15000);
+  if (push.code !== 0) return { ok: false, msg: (push.stderr || push.stdout || 'push lỗi').trim() };
+  const sh = `su -c 'mkdir -p /data/misc/adb; touch /data/misc/adb/adb_keys; `
+    + `grep -qF ${shellQuote(frag)} /data/misc/adb/adb_keys || cat ${tmp} >> /data/misc/adb/adb_keys; `
+    + `chmod 640 /data/misc/adb/adb_keys; chown system:shell /data/misc/adb/adb_keys; restorecon /data/misc/adb/adb_keys 2>/dev/null; echo CP_OK'`;
+  const out = await shell(serial, sh, 15000).catch((e) => e.message);
+  if (!/CP_OK/.test(out)) return { ok: false, msg: 'Cần root để ghi khoá: ' + String(out).trim().slice(0, 200) };
+  const chk = await shell(serial, `su -c 'cat /data/misc/adb/adb_keys'`, 10000).catch(() => '');
+  return chk.includes(frag)
+    ? { ok: true, msg: 'Đã cấy khoá — máy này sẽ luôn tin máy tính, không hỏi uỷ quyền lại' }
+    : { ok: false, msg: 'Ghi khoá không thành công' };
+}
+
 function shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
@@ -225,5 +257,5 @@ function shellQuote(s) {
 module.exports = {
   ADB_PATH, VENDOR_DIR, ROOT,
   openService, shell, execOut, execStream, run, startServer, trackDevices, isWifiSerial, shellQuote,
-  parseAddr, sel,
+  parseAddr, sel, persistAdbKey, pubKeyPath,
 };

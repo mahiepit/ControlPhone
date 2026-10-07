@@ -66,7 +66,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 **Kết nối**
 - **USB** — nhận máy ngay khi cắm.
 - **WiFi** — USB → WiFi bằng 1 nút (và WiFi → USB để chuyển lại), kết nối theo IP, quét mạng LAN, ghép nối mã (Android 11+). Máy có cả USB và WiFi chỉ hiện 1 ô và tự chuyển khi mất kết nối; máy WiFi tự kết nối lại.
-- **Root** — tự nhận; shell root, bật ADB WiFi cố định.
+- **Root** — tự nhận; shell root, bật ADB WiFi cố định, và tự cấy khoá ADB của máy tính vào `/data/misc/adb/adb_keys` để máy root không bao giờ hỏi "Cho phép gỡ lỗi USB" lại (rất hợp cho box phone không màn hình).
 - **OTG** — mở `scrcpy --otg` (bàn phím/chuột qua USB, không cần Gỡ lỗi USB).
 - Mở cửa sổ scrcpy gốc cho từng máy khi cần.
 

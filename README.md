@@ -66,7 +66,7 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 **Connections**
 - **USB** — detected instantly.
 - **Wi-Fi** — USB → Wi-Fi in one click (and Wi-Fi → USB to switch back), connect by IP, LAN scan, Android 11+ pairing code. A phone connected by both USB and Wi-Fi appears once and fails over automatically; Wi-Fi phones reconnect automatically.
-- **Root** — detected automatically; root shell, permanent ADB over Wi-Fi.
+- **Root** — detected automatically; root shell, permanent ADB over Wi-Fi, and auto-installs this PC's ADB key into `/data/misc/adb/adb_keys` so rooted phones never ask "Allow USB debugging?" again (ideal for screenless box phones).
 - **OTG** — launches `scrcpy --otg` (keyboard/mouse over USB without USB debugging).
 - Native scrcpy window for any phone as a fallback.
 

@@ -1078,6 +1078,7 @@ function moreMenu(btn) {
     { label: 'USB → WiFi (giữ kết nối không dây)', icon: 'wifi', onClick: toWifi },
     { label: 'WiFi → USB (ngắt WiFi ADB)', icon: 'usb', onClick: () => toUsb(selIds()) },
     { label: 'ROOT: kiểm tra quyền root', icon: 'shield', onClick: () => batch('rootcheck', selIds(), {}, 'Kiểm tra root', { openResults: true }) },
+    { label: 'ROOT: cấy khoá uỷ quyền (khỏi hỏi "Cho phép gỡ lỗi USB")', icon: 'key', onClick: () => batch('pushkey', selIds(), {}, 'Cấy khoá uỷ quyền', { openResults: true }) },
     { label: 'ROOT: bật ADB WiFi cố định (cổng 5555)', icon: 'shield', onClick: rootAdbWifi },
     '-',
     { label: 'Chỉ hiển thị các máy đã chọn', icon: 'eye', onClick: () => { const ids = selIds(); if (ids.length) setSolo(ids); } },

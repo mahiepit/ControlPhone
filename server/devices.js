@@ -212,6 +212,12 @@ class DeviceManager extends EventEmitter {
       const meta = store.deviceMeta(hwId);
       if (androidId && meta.androidId !== androidId) { meta.androidId = androidId; store.save(); }
       if (type === 'wifi') this._rememberWifi(hwId, serial);
+      // Máy root: tự cấy khoá uỷ quyền của PC (1 lần/máy) → sau này không bao giờ hỏi lại, kể cả box không màn hình
+      if (info.root && store.settings.autoPersistKey !== false && !store.deviceMeta(hwId).keyPushed) {
+        adb.persistAdbKey(serial).then((r) => {
+          if (r.ok) { store.deviceMeta(hwId).keyPushed = true; store.save(); }
+        }).catch(() => {});
+      }
       this._chooseTransport(d);
       this.refreshInfo(d);
       this.changed();
