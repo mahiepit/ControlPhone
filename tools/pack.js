@@ -35,5 +35,11 @@ if (fs.existsSync(nodeLicense)) fs.copyFileSync(nodeLicense, path.join(STAGE, 'n
 
 const zip = path.join(DIST, name + '.zip');
 fs.rmSync(zip, { force: true });
-execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${STAGE}' -DestinationPath '${zip}' -CompressionLevel Optimal`], { stdio: 'inherit' });
+// tar.exe có sẵn trên Windows 10+ (nhanh, ổn định); Compress-Archive của PowerShell 5.1 đôi khi treo
+try {
+  execFileSync('tar', ['-a', '-c', '-f', zip, '-C', DIST, name], { stdio: 'inherit' });
+} catch (e) {
+  fs.rmSync(zip, { force: true });
+  execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${STAGE}' -DestinationPath '${zip}' -CompressionLevel Optimal`], { stdio: 'inherit' });
+}
 console.log(`Đã tạo ${zip} (${(fs.statSync(zip).size / 1048576).toFixed(1)} MB) — Node ${process.version}`);
