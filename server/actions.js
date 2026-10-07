@@ -141,7 +141,8 @@ const OPS = {
     return { ok, msg };
   },
 
-  // WiFi → USB: tắt ADB qua mạng (adb usb + tắt Gỡ lỗi không dây), ngắt kết nối WiFi, không tự nối lại nữa
+  // WiFi → USB: ngắt kết nối WiFi, không tự nối lại nữa; máy có cáp chuyển ngay sang USB.
+  // KHÔNG khởi động lại adbd (adb usb / setprop): máy chưa "Luôn cho phép" sẽ hỏi uỷ quyền lại và mất cả USB.
   async tousb(d) {
     const wifi = [...d.transports.entries()].filter(([, t]) => t === 'wifi').map(([s]) => s);
     const usb = [...d.transports.entries()].find(([, t]) => t === 'usb');
@@ -149,26 +150,12 @@ const OPS = {
     if (!wifi.length && !meta.wifi) return { ok: true, msg: 'Đang dùng USB' };
     delete meta.wifi;
     store.save();
-    // ưu tiên ra lệnh qua cáp USB (không bị mất kết nối giữa chừng)
+    // Android 11+ "Gỡ lỗi không dây": adb tự nối lại máy đã ghép nối → phải tắt hẳn (không khởi động lại adbd)
     const serial = usb ? usb[0] : d.activeSerial;
-    if (d.info.root) {
-      // bỏ cổng cố định của "ROOT: ADB WiFi cố định" (adbd chỉ nghe TCP khi cổng > 0)
-      await adb.shell(serial, "su -c 'setprop persist.adb.tcp.port 0' 2>&1", 10000).catch(() => {});
-    }
-    // Android 11+: tắt "Gỡ lỗi không dây"; adb usb: adbd khởi động lại chỉ nghe USB
-    await adb.shell(serial, 'settings put global adb_wifi_enabled 0 2>/dev/null', 8000).catch(() => {});
-    await adb.run([...adb.sel(serial), 'usb'], 10000);
+    const wl = await adb.shell(serial, 'settings get global adb_wifi_enabled 2>/dev/null', 8000).catch(() => '');
+    if (wl.trim() === '1') await adb.shell(serial, 'settings put global adb_wifi_enabled 0', 8000).catch(() => {});
     for (const s of wifi) await adb.run(['disconnect', adb.parseAddr(s).serial], 8000);
-    return { ok: true, msg: usb ? 'Đã chuyển về USB' : 'Đã tắt ADB WiFi — cắm cáp USB để kết nối lại' };
-  },
-
-  async disconnectwifi(d) {
-    const wifi = [...d.transports.entries()].filter(([, t]) => t === 'wifi').map(([s]) => s);
-    const meta = store.deviceMeta(d.id);
-    delete meta.wifi; // không tự nối lại nữa
-    store.save();
-    for (const s of wifi) await adb.run(['disconnect', s], 8000);
-    return { ok: true, msg: wifi.length ? 'đã ngắt ' + wifi.join(', ') : 'không có kết nối WiFi' };
+    return { ok: true, msg: usb ? 'Đã chuyển về USB' : 'Đã ngắt WiFi ADB — cắm cáp USB để dùng tiếp' };
   },
 
   // ROOT: bật ADB qua WiFi cố định cổng 5555 (giữ cả sau khi khởi động lại)
