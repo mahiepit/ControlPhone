@@ -113,6 +113,7 @@ class DeviceManager extends EventEmitter {
       paused: this.isPaused(d),
       manualPaused: !!meta.paused,
       soloHidden: this.isSoloHidden(d),
+      zoomed: d.hqRefs > 0, // đang xem ở màn hình lớn (ô lưới không truyền hình)
     };
   }
 
@@ -367,7 +368,27 @@ class DeviceManager extends EventEmitter {
       // tắt màn hình thật khi kết nối: giữ máy thức (stay_awake) để vẫn xem/điều khiển được
       : { serial: d.activeSerial, kind, maxSize: s.thumbMaxSize, bitRate: s.thumbBitRate, maxFps: s.thumbFps, powerOn: s.powerOnConnect, stayAwake: !!s.screenOffOnConnect,
         // máy đang "tạm dừng xem": chỉ giữ phiên điều khiển, không truyền hình
-        video: !this.isPaused(d) };
+        video: this.thumbWantsVideo(d) };
+  }
+
+  /**
+   * Luồng nhỏ (ô lưới) có cần truyền hình không: không khi đang tạm dừng xem, và không khi máy đang
+   * được phóng to (màn hình lớn đã có luồng nét riêng — tránh điện thoại mã hoá 2 luồng cùng lúc).
+   */
+  thumbWantsVideo(d) {
+    return !this.isPaused(d) && !(d.hqRefs > 0);
+  }
+
+  /** Chạy lại riêng luồng nhỏ nếu chế độ hình (có/không) không còn đúng. */
+  _syncThumbMode(d) {
+    if (d.pending || !d.activeSerial) return;
+    const t = d.thumb;
+    if (t && (t.opts.video !== false) === this.thumbWantsVideo(d)) return;
+    if (d.restartTimer) { clearTimeout(d.restartTimer); d.restartTimer = null; }
+    d.thumb = null; // gỡ trước khi dừng để trình xử lý "đóng phiên" không tự kết nối lại
+    if (t) t.stop();
+    this._ensureThumb(d);
+    this.changed();
   }
 
   /** Tạm dừng xem = tạm dừng thủ công, hoặc bị ẩn do chế độ "Chỉ hiển thị các máy này". */
@@ -495,6 +516,7 @@ class DeviceManager extends EventEmitter {
     d.hqRefs++;
     d.hqFails = 0;
     this._ensureHq(d);
+    if (d.hqRefs === 1) this._syncThumbMode(d); // luồng nhỏ chuyển sang chỉ điều khiển
   }
 
   releaseHq(d) {
@@ -504,6 +526,7 @@ class DeviceManager extends EventEmitter {
       d.hq = null;
       h.stop();
     }
+    if (d.hqRefs === 0) this._syncThumbMode(d); // đóng màn hình lớn → ô lưới có hình lại
   }
 
   /** Phiên dùng để gửi điều khiển: ưu tiên luồng thumb (luôn chạy). */

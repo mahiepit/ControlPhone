@@ -456,4 +456,5 @@ export default {
   "{0} Sao chép báo cáo": "{0} Copy report",
   "Đang đọc thông tin…": "Reading info…",
   "Đã sao chép báo cáo": "Report copied",
+  "Đang xem ở màn hình lớn": "Viewing in large view",
 };

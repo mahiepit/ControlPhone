@@ -223,7 +223,7 @@ function batteryHtml(d) {
 }
 
 function updateTile(t, d) {
-  const sig = [d.num, d.label, d.model, d.transport, d.root, d.battery, d.charging, d.status, d.error, d.w, d.h, d.transports.length, d.paused].join('|');
+  const sig = [d.num, d.label, d.model, d.transport, d.root, d.battery, d.charging, d.status, d.error, d.w, d.h, d.transports.length, d.paused, d.zoomed].join('|');
   if (sig === t.sig) return;
   t.sig = sig;
   $('.num', t.el).textContent = d.pending ? '?' : String(d.num).padStart(2, '0');
@@ -252,6 +252,9 @@ function updateTileOverlay(t, d) {
   } else if (d.status === 'offline') {
     html = `${icon('plug')}<b>Mất kết nối</b>`;
     err = true;
+  } else if (d.zoomed && d.status === 'online') {
+    // đang phóng to: ô lưới không truyền hình (màn hình lớn có luồng nét riêng)
+    html = `${icon('maximize')}<b>Đang xem ở màn hình lớn</b>`;
   } else if (d.paused && d.status === 'online') {
     // tạm dừng xem riêng máy này: không truyền hình nhưng vẫn điều khiển/đồng bộ được
     html = `${icon('pause')}<b>Tạm dừng xem</b><span>Vẫn điều khiển được</span>`;
@@ -263,7 +266,7 @@ function updateTileOverlay(t, d) {
   t.ov.innerHTML = html;
   t.ov.classList.toggle('hidden', !html);
   t.ov.classList.toggle('err', err);
-  t.ov.classList.toggle('soft', !!d.paused && !d.pending && d.status === 'online');
+  t.ov.classList.toggle('soft', (!!d.paused || !!d.zoomed) && !d.pending && d.status === 'online');
   t.el.classList.toggle('paused', !S.live || !!d.paused);
 }
 
@@ -417,7 +420,7 @@ function updateSubs(now) {
   clearTimeout(subsTimer);
   subsTimer = setTimeout(() => {
     const vis = TEST_MODE ? [...S.byVid.keys()] : [...S.visible];
-    const v = S.live && (TEST_MODE || !document.hidden) ? vis.filter((vid) => S.byVid.has(vid) && !S.byVid.get(vid).paused).sort((a, b) => a - b) : [];
+    const v = S.live && (TEST_MODE || !document.hidden) ? vis.filter((vid) => S.byVid.has(vid) && !S.byVid.get(vid).paused && !S.byVid.get(vid).zoomed).sort((a, b) => a - b) : [];
     const sig = v.join(',');
     if (sig === S.subsSent) return;
     const prev = new Set(S.subsSent ? S.subsSent.split(',').map(Number) : []);

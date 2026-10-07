@@ -456,4 +456,5 @@ export default {
   "{0} Sao chép báo cáo": "{0} Copier le rapport",
   "Đang đọc thông tin…": "Lecture des infos…",
   "Đã sao chép báo cáo": "Rapport copié",
+  "Đang xem ở màn hình lớn": "Affiché en grande vue",
 };

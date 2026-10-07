@@ -456,4 +456,5 @@ export default {
   "{0} Sao chép báo cáo": "{0} 复制报告",
   "Đang đọc thông tin…": "正在读取信息…",
   "Đã sao chép báo cáo": "报告已复制",
+  "Đang xem ở màn hình lớn": "正在大屏查看",
 };
