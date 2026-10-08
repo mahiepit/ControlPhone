@@ -12,7 +12,7 @@
     <SelfContained>false</SelfContained>
     <AssemblyName>ControlPhone</AssemblyName>
     <RootNamespace>ControlPhone</RootNamespace>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>

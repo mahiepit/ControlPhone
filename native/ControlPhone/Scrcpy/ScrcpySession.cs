@@ -38,7 +38,7 @@ public sealed class ScrcpySession : IDisposable
     public string DeviceName { get; private set; } = "";
     public bool Running { get; private set; }
     public bool Closed { get; private set; }
-    public long BytesReceived;
+    public long BytesReceived, PacketsReceived, KeepAlives;
 
     /// <summary>(isConfig, isKey, data) — gọi trên luồng đọc video.</summary>
     public event Action<bool, bool, byte[]>? Packet;
@@ -50,7 +50,19 @@ public sealed class ScrcpySession : IDisposable
     NetworkStream? control;
     readonly object controlLock = new();
     readonly Queue<string> logTail = new();
-    long lastResetAt;
+    long lastResetAt, lastIo;
+
+    // Giữ đường USB luôn có dữ liệu: màn hình đứng yên thì luồng hình gần như im lặng, một số box/hub
+    // (vd. ROM adb 18D1:4EE7) để yên vài giây là rơi vào tiết kiệm điện rồi rớt CẢ hub. Cứ ~1 giây không có
+    // gì đi/về thì gửi 1 tin "gõ chuỗi rỗng" (server bỏ qua; adb trả OKAY → có lưu lượng cả 2 chiều).
+    static readonly ConcurrentDictionary<ScrcpySession, byte> Live = new();
+    static readonly byte[] KeepAliveMsg = ControlMessages.Text("");
+    static readonly Timer KeepAliveTimer = new(_ =>
+    {
+        long now = Environment.TickCount64;
+        foreach (var s in Live.Keys)
+            if (s.Running && now - Interlocked.Read(ref s.lastIo) >= 900 && s.Send(KeepAliveMsg)) Interlocked.Increment(ref s.KeepAlives);
+    }, null, 1000, 1000);
 
     public ScrcpySession(string addr, ScrcpyOptions opts)
     {
@@ -131,6 +143,7 @@ public sealed class ScrcpySession : IDisposable
             control = new NetworkStream(controlSock, ownsSocket: false);
             await RefreshScreenSizeAsync().ConfigureAwait(false);
             Running = true;
+            Live[this] = 0;
             new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
             return;
         }
@@ -138,6 +151,7 @@ public sealed class ScrcpySession : IDisposable
         controlSock = await AdbClient.OpenServiceAsync(Addr, socketName, 8000, ct).ConfigureAwait(false);
         control = new NetworkStream(controlSock, ownsSocket: false);
         Running = true;
+        Live[this] = 0;
         new Thread(VideoLoop) { IsBackground = true, Name = "video " + Addr, Priority = ThreadPriority.AboveNormal }.Start();
         new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
     }
@@ -211,6 +225,8 @@ public sealed class ScrcpySession : IDisposable
                 var data = new byte[size];
                 ReadExact(s, data);
                 Interlocked.Add(ref BytesReceived, size + 12);
+                Interlocked.Increment(ref PacketsReceived);
+                Interlocked.Exchange(ref lastIo, Environment.TickCount64);
                 Packet?.Invoke((hi & 0x40000000) != 0, (hi & 0x20000000) != 0, data);
             }
         }
@@ -251,7 +267,7 @@ public sealed class ScrcpySession : IDisposable
     public bool Send(byte[] msg)
     {
         if (!Running || control == null) return false;
-        try { lock (controlLock) control.Write(msg); return true; }
+        try { lock (controlLock) control.Write(msg); Interlocked.Exchange(ref lastIo, Environment.TickCount64); return true; }
         catch { Close("control đóng"); return false; }
     }
 
@@ -299,6 +315,7 @@ public sealed class ScrcpySession : IDisposable
         if (Interlocked.Exchange(ref closedFlag, 1) != 0) return;
         Closed = true;
         Running = false;
+        Live.TryRemove(this, out _);
         foreach (var s in new[] { videoSock, controlSock, shellSock }) { try { s?.Dispose(); } catch { } }
         Ended?.Invoke(reason);
     }

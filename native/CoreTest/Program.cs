@@ -40,6 +40,31 @@ if (args.Contains("store"))
     return fail == 0 ? 0 : 1;
 }
 
+// giữ USB có lưu lượng khi màn hình đứng yên: 1 phiên trên 1 máy, để yên 12 giây (dotnet run -c Release -- keepalive [serial])
+if (args.Contains("keepalive"))
+{
+    var serial = args.SkipWhile(a => a != "keepalive").Skip(1).FirstOrDefault();
+    if (serial == null)
+    {
+        var devs = new List<AdbDevice>();
+        using var cts = new CancellationTokenSource(5000);
+        try { await AdbClient.TrackDevicesAsync(l => { devs = l.ToList(); cts.Cancel(); }, _ => { }, cts.Token); } catch { }
+        serial = devs.FirstOrDefault(d => d.State == "device")?.Addr;
+    }
+    if (serial == null) { Console.WriteLine("Không có máy"); return 1; }
+    foreach (var video in new[] { true, false })
+    {
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = video, PowerOn = false });
+        await s.StartAsync();
+        await Task.Delay(12000);
+        Console.WriteLine($"{serial} video={video}: {s.PacketsReceived} gói hình, {s.KeepAlives} tin giữ kết nối trong 12 giây");
+        Check(s.Running && (video ? s.PacketsReceived + s.KeepAlives : s.KeepAlives) >= 8, $"Giữ kết nối khi để yên (video={video})", "≥ 1 lần trao đổi mỗi ~1.5 giây");
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    try { Directory.Delete(tmp, true); } catch { }
+    return fail == 0 ? 0 : 1;
+}
+
 UiDo(() => { Store.Load(); I18n.Init("vi"); });
 // lưu bình thường luôn để lại bản .bak (khôi phục được)
 if (args.Contains("backup"))
