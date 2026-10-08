@@ -173,6 +173,20 @@ public sealed class Actions
             if (!d.Root) return (false, "Máy không có root — hãy tick \"Luôn cho phép từ máy tính này\" một lần trên máy");
             return await AdbClient.PersistAdbKeyAsync(a);
         },
+        // chế độ "chỉ nhập từ PC": bàn phím ControlPhone (không hiện bàn phím trên điện thoại)
+        ["pckbd"] = async (d, a, p) =>
+        {
+            var r = await PcKeyboard.EnableAsync(a);
+            if (r.Ok) ui.Invoke(() => { var m = Store.Meta(d.Id); m.PcKeyboard = true; if (r.Prev != null) m.PrevIme = r.Prev; Store.Save(); d.Changed(); });
+            return (r.Ok, r.Msg);
+        },
+        ["phonekbd"] = async (d, a, p) =>
+        {
+            var prev = Store.Meta(d.Id).PrevIme;
+            var r = await PcKeyboard.DisableAsync(a, prev);
+            if (r.Ok) ui.Invoke(() => { Store.Meta(d.Id).PcKeyboard = false; Store.Save(); d.Changed(); });
+            return r;
+        },
         ["stayawake"] = async (d, a, p) =>
         {
             await AdbClient.ShellAsync(a, $"settings put global stay_on_while_plugged_in {(B(p, "on") ? 7 : 0)}", 10000);

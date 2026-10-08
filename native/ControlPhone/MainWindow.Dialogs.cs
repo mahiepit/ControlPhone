@@ -421,6 +421,7 @@ public partial class MainWindow
             "Chuột phải: menu (Phóng to, Cài APK, Nhập/Xuất tệp, Lệnh ADB, Cài đặt).",
             "Nút bên chuột: Quay lại · Chuột giữa: Home.",
             "Shift + lăn chuột: cuộn trong điện thoại · Alt + kéo: thu phóng 2 ngón.",
+            "Ctrl + lăn chuột: phóng to / thu nhỏ các ô điện thoại.",
             "Gõ phím khi trỏ chuột trên ô: chữ được gửi vào máy đó.",
             "Click: chọn 1 máy · Ctrl + click: thêm/bớt máy vào nhóm · Kéo khung: chọn nhiều máy.",
             "Khi chọn từ 2 máy, thao tác trên một máy trong nhóm sẽ tự đồng bộ cho cả nhóm (F3: tắt/bật tạm).",

@@ -64,6 +64,7 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     public string BatteryText => Battery is int b ? b + "%" : "";
     public string BatteryKind => Battery is null ? "" : Charging ? "chg" : Battery <= 20 ? "low" : "";
     public string BatteryTip => Battery is null ? "" : I18n.T("Pin") + (Charging ? " " + I18n.T("(đang sạc)") : "") + (Temp is double t ? $" · {t}°C" : "");
+    public bool PcKeyboardOn => !Pending && Meta.PcKeyboard;
     public bool UsbActive => Transport == "usb";
     public bool WifiActive => Transport == "wifi";
 

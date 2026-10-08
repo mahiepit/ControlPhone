@@ -16,7 +16,8 @@ ControlPhone viết lại thành ứng dụng Windows chạy trực tiếp (C# /
 | `ControlPhone/Video` | FFmpeg P/Invoke, bộ giải mã H.264, bộ đệm khung hình kép |
 | `ControlPhone/Core` | quản lý thiết bị, thao tác hàng loạt, lưu trữ, đa ngôn ngữ |
 | `ControlPhone/UI`, `MainWindow.*.cs` | giao diện: lưới, chọn/đồng bộ, phóng to, menu, hộp thoại, tiến trình |
-| `CoreTest` | kiểm thử lõi trên điện thoại thật (chỉ lệnh chỉ đọc): `dotnet run -c Release` |
+| `keyboard` | ControlPhone Keyboard — bàn phím Android không giao diện cho chế độ "chỉ nhập từ PC" (build: `keyboard/build.ps1`; khoá ký ở `%USERPROFILE%\.controlphone\keyboard.jks`, không đưa lên git) |
+| `CoreTest` | kiểm thử lõi trên điện thoại thật (chỉ lệnh chỉ đọc), luôn dùng **bản sao** của `data/` trong thư mục tạm: `dotnet run -c Release [-- kbd \| store \| xaml backup]` |
 
 Tự kiểm tra giao diện (không cần thao tác): đặt `CP_SELFTEST=<thư mục>` rồi chạy app — app tự mở từng hộp thoại / màn hình, chụp ảnh vào thư mục đó và thoát.
 

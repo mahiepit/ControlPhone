@@ -37,6 +37,10 @@ public sealed class DeviceMeta
     public string? Wifi { get; set; }
     public bool Paused { get; set; }
     public bool KeyPushed { get; set; }
+    /// <summary>Chế độ "chỉ nhập từ PC": dùng bàn phím ControlPhone (không hiện bàn phím trên điện thoại).</summary>
+    public bool PcKeyboard { get; set; }
+    /// <summary>Bàn phím trước khi bật chế độ trên (để trả lại khi tắt).</summary>
+    public string? PrevIme { get; set; }
     [JsonExtensionData] public Dictionary<string, JsonElement>? Extra { get; set; }
 }
 
@@ -95,9 +99,36 @@ public static class Store
         return Path.Combine(AppContext.BaseDirectory, "data");
     }
 
+    /// <summary>Lỗi đọc cấu hình (tệp hỏng): khi có lỗi, KHÔNG bao giờ ghi đè config.json.</summary>
+    public static string? LoadError { get; private set; }
+    static bool saveBlocked, sessionBackupDone;
+
+    /// <summary>Đọc tệp, thử lại khi đang bị chương trình khác ghi (khoá tạm thời).</summary>
+    static string? ReadWithRetry(string file)
+    {
+        for (int i = 0; ; i++)
+        {
+            try { return System.IO.File.Exists(file) ? System.IO.File.ReadAllText(file) : null; }
+            catch (IOException) when (i < 10) { Thread.Sleep(200); }
+        }
+    }
+
     public static void Load()
     {
-        try { State = JsonSerializer.Deserialize<StoreState>(System.IO.File.ReadAllText(File), Json) ?? new(); } catch { State = new(); }
+        string? json = null;
+        try
+        {
+            json = ReadWithRetry(File);
+            State = json == null ? new() : JsonSerializer.Deserialize<StoreState>(json, Json) ?? throw new JsonException("config.json rỗng");
+        }
+        catch (Exception e)
+        {
+            // tệp có nhưng không đọc được: giữ nguyên tệp gốc, sao lưu, và chặn mọi lần ghi để không mất tên/số thứ tự máy
+            State = new();
+            saveBlocked = true;
+            LoadError = e.Message;
+            try { if (json != null) System.IO.File.WriteAllText(File + $".unreadable-{DateTime.Now:yyyyMMdd-HHmmss}", json); } catch { }
+        }
         State.Settings ??= new();
         State.Devices ??= [];
         foreach (var m in State.Devices.Values) m.Groups ??= [];
@@ -141,8 +172,19 @@ public static class Store
 
     public static void Flush()
     {
+        if (saveBlocked) return; // cấu hình đọc lỗi lúc khởi động → không ghi đè dữ liệu thật
         string json;
         lock (gate) json = JsonSerializer.Serialize(State, Json);
+        try
+        {
+            if (System.IO.File.Exists(File))
+            {
+                // bản chụp đầu phiên + bản trước đó (khôi phục được nếu có sự cố)
+                if (!sessionBackupDone) { System.IO.File.Copy(File, File + ".session.bak", true); sessionBackupDone = true; }
+                System.IO.File.Copy(File, File + ".bak", true);
+            }
+        }
+        catch { }
         WriteAtomic(File, json);
     }
 

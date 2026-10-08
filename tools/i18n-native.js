@@ -10,7 +10,7 @@ const keys = new Set();
 
 function walk(dir, out = []) {
   for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (['bin', 'obj', '.vs'].includes(f.name)) continue;
+    if (['bin', 'obj', '.vs', 'CoreTest', 'keyboard'].includes(f.name)) continue; // CoreTest: chuỗi kiểm thử, không hiện cho người dùng
     const p = path.join(dir, f.name);
     if (f.isDirectory()) walk(p, out); else if (/\.(cs|xaml)$/.test(f.name)) out.push(p);
   }

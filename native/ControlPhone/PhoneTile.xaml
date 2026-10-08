@@ -34,6 +34,15 @@
                 <TextBlock Text="{Binding NumText}" Foreground="{DynamicResource Accent}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center"/>
                 <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="12" FontWeight="SemiBold" Margin="6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- chế độ chỉ nhập từ PC (bàn phím điện thoại đã tắt) -->
+                    <TextBlock Text="&#xE765;" FontFamily="{StaticResource IconFont}" FontSize="12" Margin="0,0,5,0" Foreground="{DynamicResource Accent}" ToolTip="Chỉ nhập từ PC (bàn phím điện thoại đã tắt)">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers><DataTrigger Binding="{Binding PcKeyboardOn}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                     <!-- USB / WiFi: đậm = đang dùng, mờ = dự phòng -->
                     <TextBlock Text="&#xE88E;" FontFamily="{StaticResource IconFont}" FontSize="12" Margin="0,0,4,0" ToolTip="USB">
                         <TextBlock.Style>

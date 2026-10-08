@@ -12,7 +12,7 @@
     <SelfContained>false</SelfContained>
     <AssemblyName>ControlPhone</AssemblyName>
     <RootNamespace>ControlPhone</RootNamespace>
-    <Version>2.0.0</Version>
+    <Version>2.0.1</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -23,6 +23,10 @@
   <PropertyGroup>
     <ScrcpyDir>$(MSBuildThisFileDirectory)..\..\vendor\scrcpy-win64-v5.0\</ScrcpyDir>
   </PropertyGroup>
+  <!-- bàn phím "chỉ nhập từ PC" (build bằng native/keyboard/build.ps1) -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\keyboard\ControlPhoneKeyboard.apk" Link="ControlPhoneKeyboard.apk" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
   <!-- bản dịch dùng chung với bản web -->
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\..\public\js\lang\*.js" Link="lang\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />

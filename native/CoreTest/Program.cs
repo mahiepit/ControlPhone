@@ -9,7 +9,12 @@ void Check(bool ok, string name, string detail = "") { Console.WriteLine($"{(ok 
 
 var tmp = Path.Combine(Path.GetTempPath(), "cp-coretest");
 Directory.CreateDirectory(tmp);
-Environment.SetEnvironmentVariable("CP_DATA_DIR", null);
+// KHÔNG BAO GIỜ dùng dữ liệu thật của người dùng: chép data/*.json sang thư mục tạm và trỏ Store vào đó
+var dataCopy = Path.Combine(tmp, "data");
+Directory.CreateDirectory(dataCopy);
+var realData = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "..", "data"));
+if (Directory.Exists(realData)) foreach (var f in Directory.GetFiles(realData, "*.json")) File.Copy(f, Path.Combine(dataCopy, Path.GetFileName(f)), true);
+Environment.SetEnvironmentVariable("CP_DATA_DIR", dataCopy);
 
 Dispatcher? ui = null;
 var ready = new ManualResetEventSlim();
@@ -21,7 +26,46 @@ ready.Wait();
 T Ui<T>(Func<T> f) => ui!.Invoke(f);
 void UiDo(Action a) => ui!.Invoke(a);
 
+// an toàn dữ liệu: config.json hỏng KHÔNG được bị ghi đè (dotnet run -c Release -- store) — chạy trên bản sao trong thư mục tạm
+if (args.Contains("store"))
+{
+    var cfg = Path.Combine(dataCopy, "config.json");
+    const string broken = "{ \"devices\": { \"abc\": { \"num\": 7 } }, ";
+    File.WriteAllText(cfg, broken);
+    UiDo(() => { Store.Load(); Store.Meta("new-device"); Store.Flush(); });
+    Check(File.ReadAllText(cfg) == broken, "Cấu hình hỏng không bị ghi đè", Store.LoadError ?? "");
+    Check(Directory.GetFiles(dataCopy, "config.json.unreadable-*").Length == 1, "Giữ bản sao tệp hỏng");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    try { Directory.Delete(tmp, true); } catch { }
+    return fail == 0 ? 0 : 1;
+}
+
 UiDo(() => { Store.Load(); I18n.Init("vi"); });
+// lưu bình thường luôn để lại bản .bak (khôi phục được)
+if (args.Contains("backup"))
+{
+    UiDo(() => { Store.Save(); Store.Flush(); });
+    Check(File.Exists(Path.Combine(dataCopy, "config.json.bak")) && File.Exists(Path.Combine(dataCopy, "config.json.session.bak")), "Lưu cấu hình có bản sao lưu .bak");
+}
+
+// chỉ kiểm tra giao diện ô máy (không kết nối điện thoại): dotnet run -c Release -- xaml
+if (args.Contains("xaml"))
+{
+    UiDo(() =>
+    {
+        var app = new ControlPhone.App();
+        app.InitializeComponent(); // nạp tài nguyên (màu, kiểu) của app
+        var dev = new PhoneDevice("test") { Model = "SM-G960F", Status = "online" };
+        var meta = Store.Meta("test"); meta.PcKeyboard = true; meta.Num = 1;
+        var tile = new ControlPhone.PhoneTile { DataContext = dev };
+        tile.SetTileWidth(200);
+        tile.Measure(new System.Windows.Size(400, 800)); tile.Arrange(new System.Windows.Rect(0, 0, 210, 460)); tile.UpdateLayout();
+        Check(dev.PcKeyboardOn && tile.ActualHeight > 300, "Dựng ô máy (có biểu tượng bàn phím)", $"{tile.ActualWidth:0}×{tile.ActualHeight:0}");
+        Store.State.Devices.Remove("test"); // không lưu máy giả vào cấu hình
+    });
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
 Console.WriteLine($"Dữ liệu: {Store.DataDir} · adb: {AdbClient.AdbPath}");
 DeviceManager mgr = null!;
 Actions act = null!;
@@ -133,6 +177,25 @@ if (Ui(() => first.Root))
     var keys = await AdbClient.ShellAsync(first.ActiveAddr!, "su -c 'cat /data/misc/adb/adb_keys'", 10000);
     var frag = File.ReadAllText(AdbClient.PubKeyPath()).Trim().Split(' ')[0].Substring(40, 40);
     Check(keys.Contains(frag), "Khoá uỷ quyền của PC đã nằm trong adb_keys");
+}
+
+// 11b) chế độ "chỉ nhập từ PC" (chỉ khi chạy với tham số kbd): bật rồi trả lại bàn phím cũ trên 1 máy
+if (args.Contains("kbd"))
+{
+    var imeBefore = await PcKeyboard.CurrentIme(first.ActiveAddr!);
+    async Task<BatchTask> RunOp(string op)
+    {
+        var tcs = new TaskCompletionSource<BatchTask>();
+        UiDo(() => act.TaskUpdated += t => { if (t.Finished && t.Op == op) tcs.TrySetResult(t); });
+        UiDo(() => act.RunBatch(op, [first.Id], null, op));
+        return await tcs.Task.WaitAsync(TimeSpan.FromSeconds(90));
+    }
+    var on = await RunOp("pckbd");
+    var cur = await PcKeyboard.CurrentIme(first.ActiveAddr!);
+    Check(on.OkCount == 1 && cur == PcKeyboard.Ime && Ui(() => first.PcKeyboardOn), "Bật chế độ chỉ nhập từ PC", $"{on.Results[0].Msg} · bàn phím: {cur}");
+    var off = await RunOp("phonekbd");
+    var back = await PcKeyboard.CurrentIme(first.ActiveAddr!);
+    Check(off.OkCount == 1 && back == imeBefore && !Ui(() => first.PcKeyboardOn), "Tắt chế độ: trả lại bàn phím cũ", $"{off.Results[0].Msg} · trước: {imeBefore} · sau: {back}");
 }
 
 // 12) đa ngôn ngữ

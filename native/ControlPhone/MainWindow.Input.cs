@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ControlPhone.Core;
 using ControlPhone.Scrcpy;
 
@@ -145,6 +146,21 @@ public partial class MainWindow
 
     void GridWheel(object sender, MouseWheelEventArgs e)
     {
+        // Ctrl + lăn chuột: phóng to / thu nhỏ ô (giữ máy dưới con trỏ trong tầm nhìn)
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            e.Handled = true;
+            double step = e.Delta > 0 ? 1.1 : 1 / 1.1;
+            var anchor = TileAt(e.OriginalSource, out _);
+            SetTileW(PhoneTile.TileWidth * step);
+            if (anchor != null)
+                Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+                {
+                    var t = PhoneTile.Live.FirstOrDefault(x => x.Device == anchor);
+                    t?.BringIntoView();
+                });
+            return;
+        }
         // ô nhỏ: lăn chuột thường để cuộn danh sách máy, Shift+lăn mới cuộn trong điện thoại
         if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Shift)) return;
         var d = TileAt(e.OriginalSource, out var tile);

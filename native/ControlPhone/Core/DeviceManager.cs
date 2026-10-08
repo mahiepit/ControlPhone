@@ -147,6 +147,8 @@ public sealed class DeviceManager : IDisposable
             // máy root: tự cấy khoá uỷ quyền của PC (1 lần/máy) → không bao giờ hỏi lại, kể cả box không màn hình
             if (d.Root && Store.Settings.AutoPersistKey && !meta.KeyPushed)
                 _ = Task.Run(async () => { var r = await AdbClient.PersistAdbKeyAsync(addr); if (r.Ok) ui.Invoke(() => { meta.KeyPushed = true; Store.Save(); }); });
+            // chế độ "chỉ nhập từ PC": bàn phím có thể bị đổi khi máy khởi động lại → chọn lại
+            if (meta.PcKeyboard) _ = Task.Run(async () => { try { await PcKeyboard.EnsureAsync(addr); } catch { } });
             ChooseTransport(d);
             RefreshInfo(d);
             Changed(d);

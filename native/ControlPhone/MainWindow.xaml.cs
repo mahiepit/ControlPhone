@@ -69,6 +69,8 @@ public partial class MainWindow : Window
             SideFoot.Text = $"ControlPhone v{Version} (native)\nADB: {AdbClient.AdbPath}\nscrcpy-server 5.0";
             try { SideFoot.Text += $" · FFmpeg {Ffmpeg.VersionString(Ffmpeg.avcodec_version())}"; }
             catch (Exception e) { Ui.Toast("Không nạp được FFmpeg: " + e.Message, "err", 8000); }
+            if (Store.LoadError != null)
+                Ui.Toast(T("Không đọc được data/config.json ({0}) — tệp gốc được giữ nguyên, thay đổi trong phiên này sẽ không được lưu.", Store.LoadError), "err", 15000);
             manager.Start();
             statsTimer.Start();
             tickTimer.Start();

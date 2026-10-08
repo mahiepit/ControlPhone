@@ -81,6 +81,8 @@ public partial class MainWindow
         new("Luôn sáng khi cắm sạc: BẬT", "sun", () => Batch("stayawake", SelIds(), new() { ["on"] = true }, "Luôn sáng")),
         new("Luôn sáng khi cắm sạc: TẮT", "moon", () => Batch("stayawake", SelIds(), new() { ["on"] = false }, "Tắt luôn sáng")),
         new("Độ sáng màn hình…", "sun", DlgBrightness),
+        new("Bàn phím điện thoại: TẮT (chỉ nhập từ PC)", "keyboard", () => Batch("pckbd", SelIds(), null, "Chỉ nhập từ PC", true)),
+        new("Bàn phím điện thoại: BẬT lại", "keyboard", () => Batch("phonekbd", SelIds(), null, "Bật lại bàn phím điện thoại", true)),
         null,
         new("USB → WiFi (giữ kết nối không dây)", "wifi", () => ToWifi(SelIds())),
         new("WiFi → USB (ngắt WiFi ADB)", "usb", () => ToUsb(SelIds())),
@@ -161,6 +163,9 @@ public partial class MainWindow
             new(T("Mở cài đặt mạng") + n, "wifi", () => ShellOn("am start -a android.settings.WIRELESS_SETTINGS 2>&1 | tail -1", "Cài đặt mạng")),
             new(T("Mở Cài đặt") + n, "settings", () => ShellOn("am start -a android.settings.SETTINGS 2>&1 | tail -1", "Cài đặt")),
             d.Paused ? new(T("Tiếp tục xem") + n, "play", () => SetPaused(ids, false)) : new(T("Tạm dừng xem") + n, "pause", () => SetPaused(ids, true)),
+            d.PcKeyboardOn
+                ? new(T("Bàn phím điện thoại: BẬT lại") + n, "keyboard", () => Batch("phonekbd", ids, null, "Bật lại bàn phím điện thoại", true))
+                : new(T("Bàn phím điện thoại: TẮT (chỉ nhập từ PC)") + n, "keyboard", () => Batch("pckbd", ids, null, "Chỉ nhập từ PC", true)),
             new(ids.Count > 1 ? T("Chỉ hiển thị nhóm này ({0} máy)", ids.Count) : T("Chỉ hiển thị máy này"), "eye", () => SetSolo(ids)),
             Store.State.Solo != null ? new MenuSpec("Hiện lại tất cả máy", "grid", () => SetSolo(null)) : null,
             null,
