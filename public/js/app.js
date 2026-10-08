@@ -1867,7 +1867,7 @@ if (!webCodecsSupported()) {
 }
 api('/api/state').then((st) => {
   S.settings = st.settings;
-  $('#sideFoot').innerHTML = `ADB: ${esc(st.adb)}<br>scrcpy-server 5.0`;
+  $('#sideFoot').innerHTML = `ControlPhone v${esc(st.version || '?')}<br>ADB: ${esc(st.adb)}<br>scrcpy-server 5.0`;
   $('#wifiHist').innerHTML = (st.wifiHistory || []).map((x) => `<option value="${esc(x)}">`).join('');
 }).catch(() => {});
 connectWs();

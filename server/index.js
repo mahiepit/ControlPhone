@@ -256,9 +256,13 @@ function deviceFrom(id) {
 }
 
 let adbVersion = '';
+const VERSION = require('../package.json').version;
+const APP_DIR = path.join(__dirname, '..');
 
 const API = {
-  'GET /api/state': () => ({ ...devicesMessage(), settings: store.settings, adb: adb.ADB_PATH, subnets: actions.localSubnets(), wifiHistory: store.state.wifiHistory }),
+  'GET /api/state': () => ({ ...devicesMessage(), settings: store.settings, adb: adb.ADB_PATH, subnets: actions.localSubnets(), wifiHistory: store.state.wifiHistory, version: VERSION, appDir: APP_DIR }),
+  // một bản ControlPhone khác (thường là bản mới vừa mở) yêu cầu bản này nhường cổng
+  'POST /api/quit': () => { setTimeout(() => shutdown('replaced by another ControlPhone'), 100); return { ok: true }; },
 
   'POST /api/settings': (b) => {
     const s = store.settings;
@@ -534,31 +538,66 @@ function openAppWindow() {
   ], { detached: true, stdio: 'ignore' }).unref();
 }
 
-server.on('error', (e) => {
+function httpJson(method, p, timeout = 3000) {
+  return new Promise((resolve) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: p, method, timeout, headers: { 'Content-Type': 'application/json' } }, (res) => {
+      let b = '';
+      res.on('data', (c) => { b += c; });
+      res.on('end', () => { let j = null; try { j = JSON.parse(b); } catch (_) { /* không phải JSON */ } resolve({ status: res.statusCode, json: j }); });
+    });
+    req.on('error', () => resolve({ status: 0 }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 0 }); });
+    req.end(method === 'POST' ? '{}' : undefined);
+  });
+}
+
+/** PID đang nghe cổng giao diện (Windows). */
+function portOwnerPid() {
+  try {
+    const out = require('child_process').execFileSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
+    const m = new RegExp(`^\\s*TCP\\s+127\\.0\\.0\\.1:${PORT}\\s+\\S+\\s+LISTENING\\s+(\\d+)`, 'm').exec(out);
+    return m ? +m[1] : 0;
+  } catch (_) { return 0; }
+}
+
+let replacedOnce = false;
+server.on('error', async (e) => {
   if (e.code !== 'EADDRINUSE') throw e;
-  // Cổng đã bị chiếm: nếu đó là ControlPhone đang chạy sẵn thì chỉ mở lại cửa sổ giao diện
-  http.get({ host: '127.0.0.1', port: PORT, path: '/api/state', timeout: 3000 }, (res) => {
-    res.resume();
-    if (res.statusCode === 200) {
-      console.log('ControlPhone đã đang chạy sẵn — mở cửa sổ giao diện.');
-      openAppWindow();
-      setTimeout(() => process.exit(0), 1500);
-    } else {
-      notOurs();
-    }
-  }).on('error', notOurs).on('timeout', notOurs);
-  function notOurs() {
+  // Cổng đã bị chiếm: có phải ControlPhone không?
+  const st = await httpJson('GET', '/api/state');
+  const isControlPhone = st.status === 200 && st.json && Array.isArray(st.json.list) && st.json.settings;
+  if (!isControlPhone) {
     console.log(`Cổng ${PORT} đang bị chương trình khác dùng. Hãy tắt chương trình đó, hoặc chạy với cổng khác: set PORT=8687 rồi chạy lại.`);
     setTimeout(() => process.exit(2), 500);
+    return;
   }
+  const same = st.json.version === VERSION && path.resolve(st.json.appDir || '') === path.resolve(APP_DIR);
+  if (same || replacedOnce) {
+    console.log('ControlPhone đã đang chạy sẵn — mở cửa sổ giao diện.');
+    openAppWindow();
+    setTimeout(() => process.exit(0), 1500);
+    return;
+  }
+  // Một ControlPhone KHÁC (bản cũ / thư mục khác) đang giữ cổng → mở cửa sổ sẽ ra giao diện bản cũ. Thay nó bằng bản này.
+  replacedOnce = true;
+  console.log(`Another ControlPhone (${st.json.version ? 'v' + st.json.version : 'older version'}${st.json.appDir ? ' in ' + st.json.appDir : ''}) is running - replacing it with v${VERSION}...`);
+  const q = await httpJson('POST', '/api/quit');
+  if (q.status !== 200) {
+    // bản cũ (≤ 1.0.11) chưa có /api/quit → dừng tiến trình đang giữ cổng (đã xác nhận là ControlPhone qua /api/state)
+    const pid = portOwnerPid();
+    if (pid && pid !== process.pid) { try { process.kill(pid); } catch (err) { console.log('Could not stop it:', err.message); } }
+  }
+  for (let i = 0; i < 40 && portOwnerPid(); i++) await new Promise((r) => setTimeout(r, 250));
+  server.listen(PORT, '127.0.0.1');
 });
 
-server.listen(PORT, '127.0.0.1', () => {
-  console.log(`ControlPhone đang chạy: http://127.0.0.1:${PORT}`);
+server.on('listening', () => {
+  console.log(`ControlPhone v${VERSION} running: http://127.0.0.1:${PORT}`);
   console.log(`ADB: ${adb.ADB_PATH}`);
   manager.start();
   if (process.argv.includes('--open')) openAppWindow();
 });
+server.listen(PORT, '127.0.0.1');
 
 process.on('uncaughtException', (e) => console.error('[lỗi]', e));
 process.on('unhandledRejection', (e) => console.error('[lỗi]', e));
