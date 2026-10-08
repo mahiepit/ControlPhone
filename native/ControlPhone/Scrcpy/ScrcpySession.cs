@@ -14,6 +14,8 @@ public sealed class ScrcpyOptions
     public int MaxFps { get; init; } = 15;
     public bool PowerOn { get; init; } = true;
     public bool StayAwake { get; init; }
+    /// <summary>false = phiên "chỉ điều khiển" (không mã hoá/gửi hình): máy tạm dừng xem / đang phóng to.</summary>
+    public bool Video { get; init; } = true;
 }
 
 /// <summary>
@@ -79,10 +81,12 @@ public sealed class ScrcpySession : IDisposable
         if (Closed) throw new ObjectDisposedException("session");
         var scid = Random.Shared.Next(0, int.MaxValue).ToString("x8");
         var o = Options;
+        string[] videoArgs = o.Video
+            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}"]
+            : ["video=false", "send_device_meta=false"];
         string[] args =
         [
-            ServerVersion, $"scid={scid}", "log_level=info", "audio=false",
-            "video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}",
+            ServerVersion, $"scid={scid}", "log_level=info", "audio=false", .. videoArgs,
             "tunnel_forward=true", "control=true", "clipboard_autosync=false",
             $"power_on={(o.PowerOn ? "true" : "false")}", $"stay_awake={(o.StayAwake ? "true" : "false")}",
             "cleanup=true", "downsize_on_error=true",
@@ -96,8 +100,9 @@ public sealed class ScrcpySession : IDisposable
         _ = Task.Run(ReadShellLog);
 
         var socketName = "localabstract:scrcpy_" + scid;
-        // kết nối video: thử lại tới khi server sẵn sàng (byte "dummy" đầu tiên)
-        for (int i = 0; i < 100 && !Closed && videoSock == null; i++)
+        // socket đầu tiên: thử lại tới khi server sẵn sàng (byte "dummy" đầu tiên)
+        Socket? first = null;
+        for (int i = 0; i < 100 && !Closed && first == null; i++)
         {
             try
             {
@@ -106,23 +111,50 @@ public sealed class ScrcpySession : IDisposable
                 s.ReceiveTimeout = 3000;
                 int n = 0;
                 try { n = s.Receive(one); } catch (SocketException) { }
-                if (n == 1) { s.ReceiveTimeout = 0; videoSock = s; break; }
+                if (n == 1) { s.ReceiveTimeout = 0; first = s; break; }
                 s.Dispose();
             }
             catch (Exception) when (!ct.IsCancellationRequested) { /* chưa sẵn sàng */ }
             await Task.Delay(i < 20 ? 100 : 250, ct).ConfigureAwait(false);
         }
-        if (videoSock == null)
+        if (first == null)
         {
-            var tail = string.Join(" | ", logTail.TakeLast(3));
+            string tail;
+            lock (logTail) tail = string.Join(" | ", logTail.TakeLast(3));
             Close("không kết nối được video");
             throw new IOException("Không kết nối được scrcpy" + (tail.Length > 0 ? ": " + tail : ""));
         }
+        if (!o.Video)
+        {
+            // không có hình: socket đầu tiên chính là socket điều khiển; toạ độ chạm = toạ độ thật của màn hình
+            controlSock = first;
+            control = new NetworkStream(controlSock, ownsSocket: false);
+            await RefreshScreenSizeAsync().ConfigureAwait(false);
+            Running = true;
+            new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
+            return;
+        }
+        videoSock = first;
         controlSock = await AdbClient.OpenServiceAsync(Addr, socketName, 8000, ct).ConfigureAwait(false);
         control = new NetworkStream(controlSock, ownsSocket: false);
         Running = true;
         new Thread(VideoLoop) { IsBackground = true, Name = "video " + Addr, Priority = ThreadPriority.AboveNormal }.Start();
         new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
+    }
+
+    /// <summary>Kích thước màn hình hiện tại (đã tính xoay) — dùng cho phiên chỉ điều khiển.</summary>
+    public async Task RefreshScreenSizeAsync()
+    {
+        try
+        {
+            var o = await AdbClient.ShellAsync(Addr, "dumpsys window displays | grep -m1 -oE 'cur=[0-9]+x[0-9]+'; wm size", 8000).ConfigureAwait(false);
+            var m = System.Text.RegularExpressions.Regex.Match(o, @"cur=(\d+)x(\d+)");
+            if (!m.Success) m = System.Text.RegularExpressions.Regex.Match(o, @"Override size:\s*(\d+)x(\d+)");
+            if (!m.Success) m = System.Text.RegularExpressions.Regex.Match(o, @"Physical size:\s*(\d+)x(\d+)");
+            if (m.Success) { Width = int.Parse(m.Groups[1].Value); Height = int.Parse(m.Groups[2].Value); }
+        }
+        catch { /* giữ kích thước cũ */ }
+        if (Width == 0) { Width = 1080; Height = 2220; }
     }
 
     void ReadShellLog()
@@ -225,6 +257,7 @@ public sealed class ScrcpySession : IDisposable
 
     public void RequestKeyFrame()
     {
+        if (!Options.Video) return;
         long now = Environment.TickCount64;
         if (now - lastResetAt < 800) return;
         if (Send(ControlMessages.Empty(ControlMessages.ResetVideo))) lastResetAt = now;
@@ -245,10 +278,19 @@ public sealed class ScrcpySession : IDisposable
         return Send(ControlMessages.Scroll((int)(nx * (Width - 1)), (int)(ny * (Height - 1)), Width, Height, h, v));
     }
 
-    public void KeyPress(int code)
+    public void KeyPress(int code, int meta = 0)
     {
-        Send(ControlMessages.Keycode(0, code));
-        Send(ControlMessages.Keycode(1, code));
+        Send(ControlMessages.Keycode(0, code, 0, meta));
+        Send(ControlMessages.Keycode(1, code, 0, meta));
+    }
+
+    /// <summary>Gõ văn bản: ASCII ngắn gõ trực tiếp; còn lại (tiếng Việt, emoji, dài) dán qua clipboard.</summary>
+    public void TypeText(string s, bool paste = false)
+    {
+        if (string.IsNullOrEmpty(s)) return;
+        bool ascii = s.All(c => c >= 0x20 && c <= 0x7e);
+        if (ascii && !paste && s.Length <= 300) Send(ControlMessages.Text(s));
+        else Send(ControlMessages.SetClipboardMsg(s, paste: true));
     }
 
     int closedFlag;

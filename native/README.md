@@ -1,18 +1,24 @@
 # ControlPhone 2 (native)
 
-Bản viết lại ControlPhone thành ứng dụng Windows chạy trực tiếp (C# / WPF), không cần web server hay trình duyệt.
+ControlPhone viết lại thành ứng dụng Windows chạy trực tiếp (C# / WPF), không cần web server hay trình duyệt. Có đầy đủ chức năng của bản web 1.x.
 
 - Kết nối adb trực tiếp qua socket (127.0.0.1:5037), không sinh tiến trình adb.exe cho từng lệnh.
 - Mỗi máy một phiên scrcpy-server 5.0; video H.264 được đọc và giải mã trên luồng riêng của máy đó.
-- Giải mã bằng FFmpeg native (`avcodec`/`avutil` đi kèm scrcpy), đổi YUV → BGRA bằng bảng tra, vẽ bằng WPF (Direct3D).
-- Dùng chung `data/config.json` với bản web (tên, số thứ tự máy, cài đặt luồng).
+- Giải mã bằng FFmpeg native (`avcodec`/`avutil` đi kèm scrcpy), đổi YUV → BGRA bằng bảng tra, vẽ bằng WPF (Direct3D). Ô ngoài vùng nhìn thấy không giải mã.
+- Dùng chung `data/config.json` (tên, số thứ tự, nhóm, cài đặt) và bản dịch `public/js/lang/*.js` với bản web.
 
-## Trạng thái
+## Cấu trúc
 
-Giai đoạn 1 (lõi): lưới tất cả máy, chạm / vuốt / cuộn bằng chuột, chuột phải = Quay lại, đổi cỡ ô.
-Chưa có: màn hình phóng to, đồng bộ nhóm, công cụ ADB, cài APK, tệp, WiFi… (đang chuyển dần từ bản web).
+| Thư mục | Nội dung |
+|---|---|
+| `ControlPhone/Adb` | client adb (track-devices, shell, exec, cấy khoá, tắt adb khi thoát) |
+| `ControlPhone/Scrcpy` | phiên scrcpy (video / chỉ điều khiển), lệnh điều khiển |
+| `ControlPhone/Video` | FFmpeg P/Invoke, bộ giải mã H.264, bộ đệm khung hình kép |
+| `ControlPhone/Core` | quản lý thiết bị, thao tác hàng loạt, lưu trữ, đa ngôn ngữ |
+| `ControlPhone/UI`, `MainWindow.*.cs` | giao diện: lưới, chọn/đồng bộ, phóng to, menu, hộp thoại, tiến trình |
+| `CoreTest` | kiểm thử lõi trên điện thoại thật (chỉ lệnh chỉ đọc): `dotnet run -c Release` |
 
-Đo trên 20 máy SM-G960F (480p, 15 fps): CPU 3% (0,66 lõi), RAM ~360 MB — bản web cùng điều kiện: CPU 4%, RAM ~1,4 GB.
+Tự kiểm tra giao diện (không cần thao tác): đặt `CP_SELFTEST=<thư mục>` rồi chạy app — app tự mở từng hộp thoại / màn hình, chụp ảnh vào thư mục đó và thoát.
 
 ## Build
 
@@ -21,3 +27,9 @@ dotnet build native/ControlPhone.Native.sln -c Release
 ```
 
 Cần thư mục `vendor/scrcpy-win64-v5.0` (chạy `npm run setup` ở thư mục gốc) để có FFmpeg, scrcpy-server và adb.
+
+Đóng gói bản chạy độc lập:
+
+```bash
+dotnet publish native/ControlPhone/ControlPhone.csproj -c Release -r win-x64 --self-contained true -o dist/ControlPhone-v2-win64
+```

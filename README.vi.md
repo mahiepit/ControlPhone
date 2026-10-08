@@ -18,6 +18,8 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 
 ---
 
+> **🆕 ControlPhone 2 — ứng dụng Windows chạy trực tiếp.** Từ bản 2.0, ControlPhone là ứng dụng Windows native (C# / WPF) với **đầy đủ chức năng của bản 1.x**: không web server, không cổng, không cửa sổ trình duyệt, không file `.bat`. Video được giải mã bằng **FFmpeg native**, mỗi máy một luồng giải mã. Tải **`ControlPhone-v2.x-win64.zip`** ở mục [Releases](https://github.com/mahiepit/ControlPhone/releases), giải nén và chạy **`ControlPhone.exe`** (đã kèm sẵn mọi thứ, không cần cài). Tên, số thứ tự, nhóm của bản 1.x được giữ nguyên: chép thư mục `data` cũ vào cạnh `ControlPhone.exe`. Mã nguồn: [`native/`](native/). Bản web (1.x, `ControlPhone.bat`) vẫn giữ trong kho mã.
+
 ## ✨ Điểm nổi bật
 
 | | |

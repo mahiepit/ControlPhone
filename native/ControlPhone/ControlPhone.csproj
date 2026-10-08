@@ -23,6 +23,15 @@
   <PropertyGroup>
     <ScrcpyDir>$(MSBuildThisFileDirectory)..\..\vendor\scrcpy-win64-v5.0\</ScrcpyDir>
   </PropertyGroup>
+  <!-- bản dịch dùng chung với bản web -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\..\public\js\lang\*.js" Link="lang\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <!-- scrcpy gốc (mở cửa sổ scrcpy / chế độ OTG) -->
+  <ItemGroup>
+    <None Include="$(ScrcpyDir)scrcpy.exe;$(ScrcpyDir)SDL3.dll;$(ScrcpyDir)libusb-1.0.dll;$(ScrcpyDir)avformat-*.dll;$(ScrcpyDir)scrcpy.png;$(ScrcpyDir)disconnected.png;$(ScrcpyDir)LICENSE.txt" Link="scrcpy\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(ScrcpyDir)avcodec-*.dll;$(ScrcpyDir)avutil-*.dll;$(ScrcpyDir)swresample-*.dll;$(ScrcpyDir)scrcpy-server;$(ScrcpyDir)adb.exe;$(ScrcpyDir)AdbWinApi.dll;$(ScrcpyDir)AdbWinUsbApi.dll" Link="scrcpy\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
   <ItemGroup>
     <None Include="$(ScrcpyDir)avcodec-*.dll;$(ScrcpyDir)avutil-*.dll;$(ScrcpyDir)swresample-*.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <None Include="$(ScrcpyDir)scrcpy-server" CopyToOutputDirectory="PreserveNewest" Visible="false" />

@@ -67,6 +67,15 @@ public static class ControlMessages
     }
 
     public static byte[] Empty(byte type) => [type];
+    /// <summary>copyKey: 0 = không, 1 = gửi COPY trước rồi lấy clipboard.</summary>
+    public static byte[] GetClipboardMsg(byte copyKey) => [GetClipboard, copyKey];
+
+    public static byte[] StartAppMsg(string name)
+    {
+        var body = Encoding.UTF8.GetBytes(name);
+        if (body.Length > 255) body = body[..255];
+        return [StartApp, (byte)body.Length, .. body];
+    }
     public static byte[] DisplayPower(bool on) => [SetDisplayPower, on ? (byte)1 : (byte)0];
 
     static long clipboardSeq = 1;

@@ -18,6 +18,8 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 
 ---
 
+> **🆕 ControlPhone 2 — native Windows app.** From version 2.0 ControlPhone is a native Windows app (C# / WPF) with **every feature of 1.x**: no Node server, no port, no browser window, no `.bat`. Video is decoded with native **FFmpeg**, one decoding thread per phone. Download **`ControlPhone-v2.x-win64.zip`** from [Releases](https://github.com/mahiepit/ControlPhone/releases), extract and run **`ControlPhone.exe`** (self-contained, nothing to install). Your names, numbers and groups from 1.x are kept: copy the old `data` folder next to `ControlPhone.exe`. Source: [`native/`](native/). The web version (1.x, `ControlPhone.bat`) stays in this repository.
+
 ## ✨ Why ControlPhone
 
 | | |
