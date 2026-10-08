@@ -870,6 +870,28 @@ function stepViewer(dir) {
 $('#vPrev').onclick = () => stepViewer(-1);
 $('#vNext').onclick = () => stepViewer(1);
 
+/**
+ * Chụp màn hình (độ phân giải gốc, screencap) và chép thẳng ảnh vào clipboard máy tính — dán bằng Ctrl+V.
+ * Không lưu gì trên điện thoại hay ổ đĩa. ClipboardItem nhận Promise để giữ "thao tác người dùng" trong lúc tải ảnh.
+ */
+async function shotToClipboard(d, btn) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  const png = fetch(`/api/shot?id=${encodeURIComponent(d.id)}`, { cache: 'no-store' }).then(async (r) => {
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    return r.blob();
+  }).then((blob) => (blob.type === 'image/png' ? blob : new Blob([blob], { type: 'image/png' })));
+  try {
+    if (!navigator.clipboard || !window.ClipboardItem) throw new Error('Trình duyệt không hỗ trợ chép ảnh vào clipboard');
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    toast('Đã chép ảnh màn hình — dán bằng Ctrl+V', 'ok');
+  } catch (e) {
+    toast('Không chép được ảnh vào clipboard: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 $('#viewer').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-vact],[data-vcmd]');
   if (!b || !S.viewerId) return;
@@ -879,6 +901,8 @@ $('#viewer').addEventListener('click', async (e) => {
   const c = b.dataset.vcmd;
   if (c === 'paste') {
     try { const text = await navigator.clipboard.readText(); if (text) sendWs({ t: 'text', v: targetsFor(d.vid), s: text, mode: 'paste' }); } catch (_) { toast('Không đọc được clipboard', 'err'); }
+  } else if (c === 'shotclip') {
+    shotToClipboard(d, b);
   } else if (c === 'shot') {
     const a = document.createElement('a'); a.href = `/api/shot?id=${encodeURIComponent(d.id)}&dl=1`; a.click();
   } else if (c === 'apps') dlgApps([d.id], d.id);

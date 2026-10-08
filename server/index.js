@@ -459,7 +459,9 @@ let exitTimer = null;
 let shuttingDown = false;
 
 function checkAutoExit() {
-  if (!AUTO_EXIT || shuttingDown || !everConnected || clients.size) return;
+  if (!AUTO_EXIT || shuttingDown || !everConnected) return;
+  if (clients.size) { console.log(`A UI window closed - ${clients.size} still open, not exiting.`); return; }
+  console.log(`UI window closed - exiting in ${EXIT_GRACE_MS / 1000} s unless it reconnects.`);
   clearTimeout(exitTimer);
   exitTimer = setTimeout(function again() {
     if (clients.size) return;
@@ -481,7 +483,7 @@ async function shutdown(reason) {
   if (actions.scrcpyChildren.size) {
     console.log('A native scrcpy window is still open - leaving adb running.');
   } else {
-    try { console.log('adb:', await adb.stopServerIfOurs()); } catch (e) { console.log('Could not stop adb:', e.message); }
+    try { console.log('adb:', await adb.stopServerIfUnused()); } catch (e) { console.log('Could not stop adb:', e.message); }
   }
   process.exit(0);
 }

@@ -61,6 +61,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 - Gửi văn bản, dán, mở URL, mở / dừng / xoá dữ liệu / gỡ ứng dụng
 - Cài APK (hoặc kéo thả tệp `.apk` vào cửa sổ), gửi tệp, trình duyệt tệp (tải về / tải lên / xoá)
 - ADB shell (có thể chạy root) kèm kết quả từng máy, chụp màn hình hàng loạt
+- Màn hình phóng to: bấm 1 nút là ảnh chụp màn hình (độ phân giải gốc) đã nằm trong clipboard máy tính — chỉ cần Ctrl+V để dán
 - Đổi tên, đánh số, nhóm, bộ lọc, tìm kiếm, xem pin & nhiệt độ
 
 **Kết nối**

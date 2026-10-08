@@ -61,6 +61,7 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 - Send text, paste, open URL, launch / stop / clear / uninstall apps
 - Install APK (or drag & drop `.apk` files onto the window), push files, file browser (download / upload / delete)
 - ADB shell (optionally as root) with per-phone results, batch screenshots
+- Zoom view: one click copies a full-resolution screenshot to the PC clipboard — just paste it anywhere with Ctrl+V
 - Rename, renumber, groups, filters, search, battery & temperature at a glance
 
 **Connections**

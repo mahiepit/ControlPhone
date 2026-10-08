@@ -142,36 +142,50 @@ function run(args, timeoutMs = 60000) {
   });
 }
 
-// PID của tiến trình đang nghe cổng adb server (127.0.0.1:ADB_PORT); 0 nếu chưa có. Chỉ hỗ trợ Windows.
-function listenerPid() {
-  if (process.platform !== 'win32') return Promise.resolve(0);
-  const re = new RegExp(`^\\s*TCP\\s+(?:127\\.0\\.0\\.1|0\\.0\\.0\\.0):${ADB_PORT}\\s+\\S+\\s+LISTENING\\s+(\\d+)`, 'm');
+function startServer() {
+  return run(['start-server'], 20000);
+}
+
+function netstatTcp() {
   return new Promise((resolve) => {
     execFile('netstat', ['-ano', '-p', 'tcp'], { timeout: 8000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
-      const m = !err && re.exec(String(stdout));
-      resolve(m ? parseInt(m[1], 10) : 0);
+      resolve(err ? [] : String(stdout).split(/\r?\n/).map((l) => l.trim().split(/\s+/)).filter((f) => f[0] === 'TCP' && f.length >= 5));
     });
   });
 }
 
-// adb server do ControlPhone tự khởi động (nhớ PID) → khi thoát mới được tắt. Server có sẵn của công cụ khác thì để yên.
-let ownedAdbPid = 0;
-
-async function startServer() {
-  const before = await listenerPid();
-  const r = await run(['start-server'], 20000);
-  if (!before) ownedAdbPid = await listenerPid();
-  return r;
+function processName(pid) {
+  return new Promise((resolve) => {
+    execFile('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { timeout: 5000, windowsHide: true }, (err, out) => {
+      const m = !err && /^"([^"]+)"/.exec(String(out).trim());
+      resolve(m ? m[1] : `PID ${pid}`);
+    });
+  });
 }
 
-/** Tắt adb server nếu (và chỉ nếu) chính ControlPhone đã khởi động nó và nó vẫn là tiến trình đó. */
-async function stopServerIfOurs() {
-  if (!ownedAdbPid || process.env.CP_KEEP_ADB) return 'keeping adb running';
-  const pid = await listenerPid();
-  if (!pid) return 'adb already stopped';
-  if (pid !== ownedAdbPid) return 'adb is used by another tool - keeping it';
+/**
+ * Thoát chương trình: tắt adb server, TRỪ KHI chương trình khác đang kết nối vào nó (vd. Xiaowei giữ kết nối
+ * theo dõi thiết bị) — tắt lúc đó sẽ làm công cụ kia mất máy. Chỉ hỗ trợ Windows (dùng netstat).
+ * Lưu ý: không dựa vào "ai đã khởi động adb" vì mọi lệnh `adb ...` đều tự bật lại server khi nó đang tắt.
+ */
+async function stopServerIfUnused() {
+  if (process.env.CP_KEEP_ADB) return 'CP_KEEP_ADB set - keeping adb running';
+  if (process.platform !== 'win32') return 'keeping adb running';
+  const rows = await netstatTcp();
+  const port = `:${ADB_PORT}`;
+  const listen = rows.find((f) => f[1].endsWith(port) && /^(127\.0\.0\.1|0\.0\.0\.0)/.test(f[1]) && f[3] === 'LISTENING');
+  if (!listen) return 'adb already stopped';
+  const adbPid = +listen[4];
+  // phía client của kết nối tới cổng adb (địa chỉ đích = 127.0.0.1:5037), bỏ chính mình và chính adb
+  const others = [...new Set(rows
+    .filter((f) => f[2] === `127.0.0.1${port}` && f[3] === 'ESTABLISHED')
+    .map((f) => +f[4])
+    .filter((pid) => pid && pid !== process.pid && pid !== adbPid))];
+  if (others.length) {
+    const names = await Promise.all(others.map(processName));
+    return `adb is in use by ${names.join(', ')} - keeping it running`;
+  }
   await run(['kill-server'], 8000);
-  ownedAdbPid = 0;
   return 'adb stopped';
 }
 
@@ -285,6 +299,6 @@ function shellQuote(s) {
 
 module.exports = {
   ADB_PATH, VENDOR_DIR, ROOT,
-  openService, shell, execOut, execStream, run, startServer, stopServerIfOurs, trackDevices, isWifiSerial, shellQuote,
+  openService, shell, execOut, execStream, run, startServer, stopServerIfUnused, trackDevices, isWifiSerial, shellQuote,
   parseAddr, sel, persistAdbKey, pubKeyPath,
 };
