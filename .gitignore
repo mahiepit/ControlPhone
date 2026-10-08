@@ -9,6 +9,12 @@ vendor/
 node/
 dist/
 
+# bản native (C#)
+native/**/bin/
+native/**/obj/
+native/**/*.user
+native/.vs/
+
 # công cụ phát triển cục bộ
 .claude/
 .vscode/

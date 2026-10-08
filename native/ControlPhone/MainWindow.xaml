@@ -1,0 +1,36 @@
+<Window x:Class="ControlPhone.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:ControlPhone"
+        Title="ControlPhone" Width="1400" Height="900" WindowState="Maximized"
+        Background="{StaticResource Bg}" UseLayoutRounding="True">
+    <DockPanel>
+        <!-- thanh trên -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource Bg2}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="12,8">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="ControlPhone" FontSize="16" FontWeight="Bold" VerticalAlignment="Center"/>
+                <TextBlock x:Name="CountText" Margin="18,0,0,0" Foreground="{StaticResource Ok}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                <TextBlock x:Name="StatsText" Margin="18,0,0,0" Foreground="{StaticResource Muted}" VerticalAlignment="Center"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Cỡ ô" Foreground="{StaticResource Muted}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Slider x:Name="SizeSlider" Width="180" Minimum="110" Maximum="520" Value="200" VerticalAlignment="Center"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+        <!-- thanh dưới: nhật ký ngắn -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource Bg2}" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="12,4">
+            <TextBlock x:Name="LogText" Foreground="{StaticResource Muted}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+        </Border>
+        <!-- lưới điện thoại -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="6">
+            <ItemsControl x:Name="Grid">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate><local:PhoneTile/></DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

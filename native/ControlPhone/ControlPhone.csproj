@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <AssemblyName>ControlPhone</AssemblyName>
+    <RootNamespace>ControlPhone</RootNamespace>
+    <Version>2.0.0</Version>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <!-- FFmpeg (giải mã H.264) + scrcpy-server: lấy từ bộ scrcpy đi kèm dự án -->
+  <PropertyGroup>
+    <ScrcpyDir>$(MSBuildThisFileDirectory)..\..\vendor\scrcpy-win64-v5.0\</ScrcpyDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(ScrcpyDir)avcodec-*.dll;$(ScrcpyDir)avutil-*.dll;$(ScrcpyDir)swresample-*.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(ScrcpyDir)scrcpy-server" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <None Include="$(ScrcpyDir)adb.exe;$(ScrcpyDir)AdbWinApi.dll;$(ScrcpyDir)AdbWinUsbApi.dll" Link="adb\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+</Project>
