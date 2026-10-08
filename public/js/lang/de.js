@@ -426,6 +426,7 @@ export default {
   "Không chép được ảnh vào clipboard:": "Bild konnte nicht in die Zwischenablage kopiert werden:",
   "Trình duyệt không hỗ trợ chép ảnh vào clipboard": "Dieser Browser kann keine Bilder in die Zwischenablage kopieren",
   "Đã chép ảnh màn hình — dán bằng Ctrl+V": "Screenshot kopiert — mit Strg+V einfügen",
+  "Tắt ADB khi thoát ControlPhone (bỏ chọn nếu công cụ khác cũng dùng ADB, ví dụ script tự động)": "ADB beim Beenden von ControlPhone stoppen (abwählen, wenn andere Tools ADB nutzen, z. B. Automatisierungsskripte)",
   "Đường dẫn": "Pfad",
   "Đảo chọn": "Auswahl umkehren",
   "Đồng bộ": "Synchron",

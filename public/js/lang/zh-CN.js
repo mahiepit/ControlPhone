@@ -426,6 +426,7 @@ export default {
   "Không chép được ảnh vào clipboard:": "无法将图片复制到剪贴板：",
   "Trình duyệt không hỗ trợ chép ảnh vào clipboard": "此浏览器不支持将图片复制到剪贴板",
   "Đã chép ảnh màn hình — dán bằng Ctrl+V": "截图已复制 — 用 Ctrl+V 粘贴",
+  "Tắt ADB khi thoát ControlPhone (bỏ chọn nếu công cụ khác cũng dùng ADB, ví dụ script tự động)": "退出 ControlPhone 时关闭 ADB（如果其他工具也在用 ADB，例如自动化脚本，请取消勾选）",
   "Đường dẫn": "路径",
   "Đảo chọn": "反选",
   "Đồng bộ": "同步操作",

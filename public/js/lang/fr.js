@@ -426,6 +426,7 @@ export default {
   "Không chép được ảnh vào clipboard:": "Impossible de copier l'image dans le presse-papiers :",
   "Trình duyệt không hỗ trợ chép ảnh vào clipboard": "Ce navigateur ne peut pas copier d'images dans le presse-papiers",
   "Đã chép ảnh màn hình — dán bằng Ctrl+V": "Capture copiée — collez avec Ctrl+V",
+  "Tắt ADB khi thoát ControlPhone (bỏ chọn nếu công cụ khác cũng dùng ADB, ví dụ script tự động)": "Arrêter ADB à la fermeture de ControlPhone (décochez si d'autres outils utilisent ADB, ex. scripts d'automatisation)",
   "Đường dẫn": "Chemin",
   "Đảo chọn": "Inverser la sélection",
   "Đồng bộ": "Synchro",

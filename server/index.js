@@ -483,7 +483,8 @@ async function shutdown(reason) {
   if (actions.scrcpyChildren.size) {
     console.log('A native scrcpy window is still open - leaving adb running.');
   } else {
-    try { console.log('adb:', await adb.stopServerIfUnused()); } catch (e) { console.log('Could not stop adb:', e.message); }
+    if (store.settings.stopAdbOnExit === false) console.log('adb: "stop adb on exit" is off - leaving it running');
+    else try { console.log('adb:', await adb.stopServerIfUnused()); } catch (e) { console.log('Could not stop adb:', e.message); }
   }
   process.exit(0);
 }

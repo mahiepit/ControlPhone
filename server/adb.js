@@ -129,8 +129,12 @@ async function execStream(serial, cmd) {
   return sock;
 }
 
+// Đang thoát: không chạy thêm adb.exe nào nữa — mọi lệnh adb.exe đều tự BẬT LẠI adb server nếu nó đang tắt
+let exiting = false;
+
 /** Chạy adb.exe (cho push/install/connect/pair/tcpip). */
 function run(args, timeoutMs = 60000) {
+  if (exiting && args[0] !== 'kill-server') return Promise.resolve({ code: 1, stdout: '', stderr: 'ControlPhone is exiting' });
   return new Promise((resolve) => {
     execFile(ADB_PATH, args, { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       resolve({
@@ -169,24 +173,29 @@ function processName(pid) {
  * Lưu ý: không dựa vào "ai đã khởi động adb" vì mọi lệnh `adb ...` đều tự bật lại server khi nó đang tắt.
  */
 async function stopServerIfUnused() {
+  exiting = true; // từ đây không lệnh adb.exe nào của mình được chạy (tránh tự bật lại adb vừa tắt)
   if (process.env.CP_KEEP_ADB) return 'CP_KEEP_ADB set - keeping adb running';
   if (process.platform !== 'win32') return 'keeping adb running';
-  const rows = await netstatTcp();
   const port = `:${ADB_PORT}`;
-  const listen = rows.find((f) => f[1].endsWith(port) && /^(127\.0\.0\.1|0\.0\.0\.0)/.test(f[1]) && f[3] === 'LISTENING');
-  if (!listen) return 'adb already stopped';
-  const adbPid = +listen[4];
-  // phía client của kết nối tới cổng adb (địa chỉ đích = 127.0.0.1:5037), bỏ chính mình và chính adb
-  const others = [...new Set(rows
-    .filter((f) => f[2] === `127.0.0.1${port}` && f[3] === 'ESTABLISHED')
-    .map((f) => +f[4])
-    .filter((pid) => pid && pid !== process.pid && pid !== adbPid))];
-  if (others.length) {
-    const names = await Promise.all(others.map(processName));
-    return `adb is in use by ${names.join(', ')} - keeping it running`;
+  // lệnh adb.exe đang chạy dở lúc tắt vẫn có thể bật lại server → kiểm tra lại và tắt thêm (tối đa 3 lần)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const rows = await netstatTcp();
+    const listen = rows.find((f) => f[1].endsWith(port) && /^(127\.0\.0\.1|0\.0\.0\.0)/.test(f[1]) && f[3] === 'LISTENING');
+    if (!listen) return attempt ? `adb stopped (restarted ${attempt}x by a pending command, stopped again)` : 'adb already stopped';
+    const adbPid = +listen[4];
+    // phía client của kết nối tới cổng adb (địa chỉ đích = 127.0.0.1:5037), bỏ chính mình và chính adb
+    const others = [...new Set(rows
+      .filter((f) => f[2] === `127.0.0.1${port}` && f[3] === 'ESTABLISHED')
+      .map((f) => +f[4])
+      .filter((pid) => pid && pid !== process.pid && pid !== adbPid))];
+    if (others.length) {
+      const names = await Promise.all(others.map(processName));
+      return `adb is in use by ${names.join(', ')} - keeping it running`;
+    }
+    await run(['kill-server'], 8000);
+    await new Promise((r) => setTimeout(r, 1200));
   }
-  await run(['kill-server'], 8000);
-  return 'adb stopped';
+  return 'adb keeps restarting - left running';
 }
 
 /**
@@ -202,6 +211,7 @@ function trackDevices(onChange, onError) {
     while (!stopped) {
       try {
         sock = await openService(null, 'host:track-devices-l', 8000);
+        if (stopped) { sock.destroy(); break; } // đã dừng trong lúc đang kết nối
         await new Promise((resolve) => {
           let buf = Buffer.alloc(0);
           sock.on('data', (d) => {
@@ -228,6 +238,7 @@ function trackDevices(onChange, onError) {
           sock.resume();
         });
       } catch (e) {
+        if (stopped) break; // đang thoát: KHÔNG bật lại adb server
         if (onError) onError(e);
         // adb server có thể chưa chạy
         await startServer();

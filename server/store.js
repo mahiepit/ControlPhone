@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
   screenOffOnConnect: true, // tự tắt màn hình thật của điện thoại khi kết nối (vẫn xem được)
   preferTransport: 'usb', // usb | wifi
   autoReconnectWifi: true,
+  stopAdbOnExit: true, // thoát chương trình thì tắt adb server (trừ khi chương trình khác đang giữ kết nối)
   maxParallelStart: 6,
   maxParallelJobs: 10,
   screenshotDir: path.join(__dirname, '..', 'screenshots'),

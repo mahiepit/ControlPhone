@@ -415,6 +415,37 @@ const observer = new IntersectionObserver((entries) => {
   updateSubs();
 }, { root: $('#gridWrap'), rootMargin: '150px' });
 
+// ---- tự phục hồi ô lưới: sau khi nhận hình lại (đóng phóng to, cuộn tới, bỏ tạm dừng) mà không vẽ được khung nào ----
+// Server luôn gửi keyframe khi đăng ký lại (kể cả màn hình đứng yên), nên "không có khung nào" nghĩa là đã lỡ keyframe.
+const WATCH_KF_MS = 2500;   // chưa có khung → xin keyframe
+const WATCH_RESET_MS = 6000; // vẫn chưa có → dựng lại bộ giải mã rồi xin keyframe
+function armTileWatch(t) {
+  t.watch = { since: performance.now(), frames: t.decoder ? t.decoder.frames : 0, kf: false, resets: 0 };
+}
+setInterval(() => {
+  const subs = new Set(S.subsSent ? S.subsSent.split(',').map(Number) : []);
+  const now = performance.now();
+  for (const t of S.tiles.values()) {
+    const w = t.watch;
+    if (!w) continue;
+    const d = S.devices.get(t.id);
+    if (!d || !subs.has(d.vid) || d.zoomed || d.paused || d.pending) { t.watch = null; continue; }
+    if (d.status !== 'online') { w.since = now; w.kf = false; continue; } // luồng đang khởi động lại: chờ online mới tính giờ
+    if (t.decoder && t.decoder.frames > w.frames) { t.watch = null; continue; } // đã có hình
+    const age = now - w.since;
+    if (age > WATCH_RESET_MS) {
+      if (w.resets >= 3) { console.warn('tile still has no video after 3 recovery attempts', t.id); t.watch = null; continue; }
+      if (t.decoder) { t.decoder.close(); t.decoder = null; }
+      ensureDecoder(t);
+      sendWs({ t: 'kf', v: d.vid, kind: 'thumb' });
+      Object.assign(w, { since: now, frames: 0, kf: true, resets: w.resets + 1 });
+    } else if (age > WATCH_KF_MS && !w.kf) {
+      sendWs({ t: 'kf', v: d.vid, kind: 'thumb' });
+      w.kf = true;
+    }
+  }
+}, 1000);
+
 let subsTimer = null;
 function updateSubs(now) {
   clearTimeout(subsTimer);
@@ -425,7 +456,11 @@ function updateSubs(now) {
     if (sig === S.subsSent) return;
     const prev = new Set(S.subsSent ? S.subsSent.split(',').map(Number) : []);
     for (const vid of v) {
-      if (!prev.has(vid)) { const d = S.byVid.get(vid); const t = d && S.tiles.get(d.id); if (t && t.decoder) t.decoder.resume(); }
+      if (!prev.has(vid)) {
+        const d = S.byVid.get(vid); const t = d && S.tiles.get(d.id);
+        if (t && t.decoder) t.decoder.resume();
+        if (t) armTileWatch(t);
+      }
     }
     S.subsSent = sig;
     sendWs({ t: 'sub', v });
@@ -749,6 +784,9 @@ document.addEventListener('keydown', async (e) => {
     pendingPaste = { vids, timer };
     return;
   }
+
+  // Esc luôn đóng màn hình phóng to (nút X ghi "Đóng (Esc)"); nút Quay lại của điện thoại = chuột phải / nút bên phải
+  if (e.key === 'Escape' && S.viewerId) { e.preventDefault(); closeViewer(); return; }
 
   const vid = keyboardTargetVid();
   if (vid != null) {
@@ -1576,6 +1614,7 @@ async function dlgSettings() {
       <label class="check-row"><input type="checkbox" id="screenOffOnConnect"> Tự tắt màn hình điện thoại khi kết nối (vẫn xem &amp; điều khiển được, tiết kiệm pin — thoát app màn hình tự bật lại)</label>
       <label class="check-row"><input type="checkbox" id="powerOnConnect"> Đánh thức điện thoại khi kết nối</label>
       <label class="check-row"><input type="checkbox" id="autoReconnectWifi"> Tự kết nối lại các máy WiFi đã từng kết nối</label>
+      <label class="check-row"><input type="checkbox" id="stopAdbOnExit"> Tắt ADB khi thoát ControlPhone (bỏ chọn nếu công cụ khác cũng dùng ADB, ví dụ script tự động)</label>
       <label class="field"><span>Giải mã video trên máy tính</span><select class="inp" id="decHw"><option value="prefer-software">CPU (khuyên dùng — chạy được 100 máy)</option><option value="no-preference">Tự động</option><option value="prefer-hardware">GPU</option></select></label>
       <div class="note help-list">
         <div>Thay đổi chất lượng lưới sẽ kết nối lại luồng của tất cả máy.</div>
@@ -1595,7 +1634,7 @@ async function dlgSettings() {
           thumbMaxSize: +g('thumbMaxSize').value, thumbBitRate: +g('thumbBitRate').value * 1000, thumbFps: +g('thumbFps').value,
           hqMaxSize: +g('hqMaxSize').value, hqBitRate: +g('hqBitRate').value * 1000, hqFps: +g('hqFps').value,
           preferTransport: g('preferTransport').value, maxParallelStart: +g('maxParallelStart').value, maxParallelJobs: +g('maxParallelJobs').value,
-          screenshotDir: g('screenshotDir').value.trim(), powerOnConnect: g('powerOnConnect').checked, screenOffOnConnect: g('screenOffOnConnect').checked, autoReconnectWifi: g('autoReconnectWifi').checked,
+          screenshotDir: g('screenshotDir').value.trim(), powerOnConnect: g('powerOnConnect').checked, screenOffOnConnect: g('screenOffOnConnect').checked, autoReconnectWifi: g('autoReconnectWifi').checked, stopAdbOnExit: g('stopAdbOnExit').checked,
         };
         const hw = g('decHw').value;
         if (hw !== S.decoderHw) {
@@ -1609,7 +1648,7 @@ async function dlgSettings() {
     }],
   });
   const set = (id, v) => { const el = $('#' + id, m.el); if (el.type === 'checkbox') el.checked = !!v; else el.value = v; };
-  for (const k of ['thumbMaxSize', 'thumbFps', 'hqMaxSize', 'hqFps', 'preferTransport', 'maxParallelStart', 'maxParallelJobs', 'screenshotDir', 'powerOnConnect', 'screenOffOnConnect', 'autoReconnectWifi']) set(k, st[k]);
+  for (const k of ['thumbMaxSize', 'thumbFps', 'hqMaxSize', 'hqFps', 'preferTransport', 'maxParallelStart', 'maxParallelJobs', 'screenshotDir', 'powerOnConnect', 'screenOffOnConnect', 'autoReconnectWifi', 'stopAdbOnExit']) set(k, st[k]);
   set('thumbBitRate', Math.round(st.thumbBitRate / 1000));
   set('hqBitRate', Math.round(st.hqBitRate / 1000));
   set('decHw', S.decoderHw);

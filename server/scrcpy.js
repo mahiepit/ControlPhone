@@ -267,8 +267,8 @@ class ScrcpySession extends EventEmitter {
     if (!this.videoOn) return;
     const now = Date.now();
     if (now - this.lastResetAt < 800) return;
-    this.lastResetAt = now;
-    this.send(P.empty(P.TYPE.RESET_VIDEO));
+    // chỉ tính giới hạn khi đã gửi được: yêu cầu lúc phiên chưa chạy không được "chiếm suất" của lần xin kế tiếp
+    if (this.send(P.empty(P.TYPE.RESET_VIDEO))) this.lastResetAt = now;
   }
 
   _close(reason) {
