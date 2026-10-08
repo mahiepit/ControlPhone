@@ -1,6 +1,6 @@
 {
   "name": "controlphone",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Free, open-source multi-phone Android control center: live screen grid, group sync control, ADB tools. Unlimited devices, no ads, lightweight. Built on scrcpy.",
   "license": "MIT",

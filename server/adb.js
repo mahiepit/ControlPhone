@@ -7,7 +7,7 @@ const path = require('path');
 const { execFile, execFileSync } = require('child_process');
 
 const ADB_HOST = '127.0.0.1';
-const ADB_PORT = 5037;
+const ADB_PORT = parseInt(process.env.ANDROID_ADB_SERVER_PORT || '5037', 10); // adb.exe cũng đọc biến này
 const ROOT = path.join(__dirname, '..');
 const VENDOR_DIR = path.join(ROOT, 'vendor', 'scrcpy-win64-v5.0');
 
@@ -142,8 +142,37 @@ function run(args, timeoutMs = 60000) {
   });
 }
 
-function startServer() {
-  return run(['start-server'], 20000);
+// PID của tiến trình đang nghe cổng adb server (127.0.0.1:ADB_PORT); 0 nếu chưa có. Chỉ hỗ trợ Windows.
+function listenerPid() {
+  if (process.platform !== 'win32') return Promise.resolve(0);
+  const re = new RegExp(`^\\s*TCP\\s+(?:127\\.0\\.0\\.1|0\\.0\\.0\\.0):${ADB_PORT}\\s+\\S+\\s+LISTENING\\s+(\\d+)`, 'm');
+  return new Promise((resolve) => {
+    execFile('netstat', ['-ano', '-p', 'tcp'], { timeout: 8000, windowsHide: true, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      const m = !err && re.exec(String(stdout));
+      resolve(m ? parseInt(m[1], 10) : 0);
+    });
+  });
+}
+
+// adb server do ControlPhone tự khởi động (nhớ PID) → khi thoát mới được tắt. Server có sẵn của công cụ khác thì để yên.
+let ownedAdbPid = 0;
+
+async function startServer() {
+  const before = await listenerPid();
+  const r = await run(['start-server'], 20000);
+  if (!before) ownedAdbPid = await listenerPid();
+  return r;
+}
+
+/** Tắt adb server nếu (và chỉ nếu) chính ControlPhone đã khởi động nó và nó vẫn là tiến trình đó. */
+async function stopServerIfOurs() {
+  if (!ownedAdbPid || process.env.CP_KEEP_ADB) return 'keeping adb running';
+  const pid = await listenerPid();
+  if (!pid) return 'adb already stopped';
+  if (pid !== ownedAdbPid) return 'adb is used by another tool - keeping it';
+  await run(['kill-server'], 8000);
+  ownedAdbPid = 0;
+  return 'adb stopped';
 }
 
 /**
@@ -256,6 +285,6 @@ function shellQuote(s) {
 
 module.exports = {
   ADB_PATH, VENDOR_DIR, ROOT,
-  openService, shell, execOut, execStream, run, startServer, trackDevices, isWifiSerial, shellQuote,
+  openService, shell, execOut, execStream, run, startServer, stopServerIfOurs, trackDevices, isWifiSerial, shellQuote,
   parseAddr, sel, persistAdbKey, pubKeyPath,
 };

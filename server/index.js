@@ -449,11 +449,51 @@ const server = http.createServer(async (req, res) => {
 
 const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false });
 wss.on('error', () => {}); // lỗi cổng đã được xử lý ở server.on('error')
+// ---------- thoát chương trình ----------
+// Mở bằng ControlPhone.bat (--open): đóng cửa sổ giao diện → server tự thoát (cửa sổ .bat tự đóng)
+// và tắt adb nếu chính mình đã khởi động nó. CP_KEEP_RUNNING=1: chạy nền mãi; CP_KEEP_ADB=1: không bao giờ tắt adb.
+const AUTO_EXIT = process.argv.includes('--open') && !process.env.CP_KEEP_RUNNING;
+const EXIT_GRACE_MS = 10000; // chờ khi tải lại trang / rớt kết nối thoáng qua (giao diện tự nối lại sau 1 giây)
+let everConnected = false;
+let exitTimer = null;
+let shuttingDown = false;
+
+function checkAutoExit() {
+  if (!AUTO_EXIT || shuttingDown || !everConnected || clients.size) return;
+  clearTimeout(exitTimer);
+  exitTimer = setTimeout(function again() {
+    if (clients.size) return;
+    if (actions.runningTasks > 0) { exitTimer = setTimeout(again, 5000); return; } // đợi tác vụ (cài APK, đẩy file…) xong
+    shutdown('UI window closed');
+  }, EXIT_GRACE_MS);
+}
+
+async function shutdown(reason) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Shutting down (${reason})...`);
+  setTimeout(() => process.exit(0), 12000).unref(); // phòng treo: dù sao cũng thoát
+  try { manager.stop(); } catch (_) { /* bỏ qua */ }
+  for (const c of clients) { try { c.ws.terminate(); } catch (_) { /* bỏ qua */ } }
+  try { server.close(); } catch (_) { /* bỏ qua */ }
+  // để điện thoại kịp dọn (bật lại màn hình thật…) trước khi cắt adb; đóng thẳng cửa sổ .bat (SIGHUP) thì Windows chỉ chờ ~5 giây
+  await new Promise((r) => setTimeout(r, reason === 'SIGHUP' ? 300 : 1500));
+  if (actions.scrcpyChildren.size) {
+    console.log('A native scrcpy window is still open - leaving adb running.');
+  } else {
+    try { console.log('adb:', await adb.stopServerIfOurs()); } catch (e) { console.log('Could not stop adb:', e.message); }
+  }
+  process.exit(0);
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) process.on(sig, () => shutdown(sig));
+
 wss.on('connection', (ws, req) => {
   const ra = req.socket.remoteAddress || '';
   if (!/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(ra)) { ws.close(); return; }
   const c = { ws, subs: new Set(), hqVid: null, needKey: new Set() };
   clients.add(c);
+  everConnected = true;
+  clearTimeout(exitTimer);
   ws.send(JSON.stringify(devicesMessage()));
   ws.on('message', (data, isBinary) => {
     if (isBinary) return;
@@ -462,6 +502,7 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     clients.delete(c);
     if (c.hqVid != null) { const d = manager.byVid(c.hqVid); if (d) manager.releaseHq(d); }
+    checkAutoExit();
   });
 });
 

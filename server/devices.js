@@ -68,6 +68,18 @@ class DeviceManager extends EventEmitter {
     this.wifiTimer = setInterval(() => this._autoReconnectWifi(), 20000);
   }
 
+  /** Thoát chương trình: dừng theo dõi adb, bộ hẹn giờ và mọi luồng hình (không tự khởi động lại nữa). */
+  stop() {
+    this.stopping = true;
+    clearInterval(this.infoTimer);
+    clearInterval(this.wifiTimer);
+    if (this.stopTrack) this.stopTrack();
+    for (const d of this.devices.values()) {
+      clearTimeout(d.retryTimer);
+      this._stopSessions(d);
+    }
+  }
+
   changed() {
     if (this.changedTimer) return;
     this.changedTimer = setTimeout(() => { this.changedTimer = null; this.emit('changed'); }, 200);
@@ -438,7 +450,7 @@ class DeviceManager extends EventEmitter {
   }
 
   _ensureThumb(d) {
-    if (d.thumb || !d.activeSerial || d.pending) return;
+    if (this.stopping || d.thumb || !d.activeSerial || d.pending) return;
     if (d.restartTimer) { clearTimeout(d.restartTimer); d.restartTimer = null; }
     const sess = new ScrcpySession(this._sessionOpts(d, 'thumb'));
     d.thumb = sess;
@@ -462,7 +474,7 @@ class DeviceManager extends EventEmitter {
   }
 
   _ensureHq(d) {
-    if (d.hq || !d.activeSerial || d.pending) return;
+    if (this.stopping || d.hq || !d.activeSerial || d.pending) return;
     const sess = new ScrcpySession(this._sessionOpts(d, 'hq'));
     d.hq = sess;
     this._wire(d, sess, 'hq');

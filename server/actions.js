@@ -214,6 +214,8 @@ class Actions {
     this.manager = manager;
     this.broadcast = broadcast;
     this.taskSeq = 1;
+    this.runningTasks = 0; // số tác vụ hàng loạt đang chạy (không tự thoát khi còn việc dang dở)
+    this.scrcpyChildren = new Set(); // cửa sổ scrcpy gốc còn mở (đang dùng adb)
     fs.mkdirSync(UPLOAD_DIR, { recursive: true });
     // dọn file tải lên cũ (> 1 ngày)
     for (const f of fs.readdirSync(UPLOAD_DIR)) {
@@ -239,6 +241,7 @@ class Actions {
       this.broadcast({ t: 'task', task });
     };
     emit(true);
+    this.runningTasks++;
     Promise.all(devices.map((d) => lim.run(async () => {
       let r;
       try { r = await fn(d, { manager: this.manager }, params || {}); } catch (e) { r = { ok: false, msg: e.message }; }
@@ -246,7 +249,7 @@ class Actions {
       if (r.ok) task.ok++; else task.fail++;
       task.results.push({ id: d.id, vid: d.vid, name: this.manager.label(d), ok: r.ok, msg: String(r.msg || '').slice(0, 4000) });
       emit(false);
-    }))).then(() => {
+    }))).finally(() => { this.runningTasks--; }).then(() => {
       task.finished = true;
       emit(true);
       this.manager.changed();
@@ -320,6 +323,8 @@ class Actions {
       env: { ...process.env, ADB: adb.ADB_PATH },
     });
     child.unref();
+    this.scrcpyChildren.add(child);
+    child.on('exit', () => this.scrcpyChildren.delete(child));
     return { ok: true, msg: 'Đã mở scrcpy ' + args.join(' ') };
   }
 

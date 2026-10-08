@@ -24,7 +24,7 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 |---|---|
 | ♾️ **Unlimited devices** | No device cap, no license key, no "pro" version. Designed for 100+ phones on one PC (tested live with 20 phones, benchmarked at 100 streams). |
 | 🚫 **No ads, no tracking** | No ads, no telemetry, no account. The app talks only to your phones and your own PC (Internet is used once, to download scrcpy during setup). |
-| 💤 **No hidden background tasks** | Nothing is installed as a service, nothing starts with Windows. Close the server window and everything stops. No app is installed on the phones either — the screen server (one small file in `/data/local/tmp`) runs only while connected. |
+| 💤 **No hidden background tasks** | Nothing is installed as a service, nothing starts with Windows. Close the app window (or the server window) and everything stops — the server exits by itself and also stops the ADB server if ControlPhone started it (an ADB server already used by another tool is left running; set `CP_KEEP_ADB=1` to always keep ADB, `CP_KEEP_RUNNING=1` to keep the server running after the window closes). No app is installed on the phones either — the screen server (one small file in `/data/local/tmp`) runs only while connected. |
 | 🪶 **Lightweight by design** | Hardware H.264 encoding on the phone, decoding in your browser (WebCodecs). Idle phones cost ~6 kbps each; phones that are off-screen or paused send nothing. |
 | 🆓 **Free & open source** | MIT license. Use it, modify it, share it. |
 

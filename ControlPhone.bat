@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title ControlPhone - server (close this window to exit)
+title ControlPhone - server (closes by itself when you close the app window)
 cd /d "%~dp0"
 
 rem Dung node.exe di kem (ban phat hanh) neu co, neu khong dung Node.js da cai
