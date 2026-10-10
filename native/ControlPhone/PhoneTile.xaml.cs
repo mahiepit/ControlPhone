@@ -126,10 +126,12 @@ public partial class PhoneTile : UserControl
     }
 
     /// <summary>Toạ độ chuẩn hoá 0..1 trên màn hình điện thoại (ảnh phủ kín khung màn hình).</summary>
-    public Point Norm(Point pInScreen)
+    /// <param name="clamp">false: giữ nguyên toạ độ khi con trỏ ra ngoài màn hình (để biết đã trượt khỏi mép).</param>
+    public Point Norm(Point pInScreen, bool clamp = true)
     {
         double W = Math.Max(1, Screen.ActualWidth), H = Math.Max(1, Screen.ActualHeight);
-        return new Point(Math.Clamp(pInScreen.X / W, 0, 1), Math.Clamp(pInScreen.Y / H, 0, 1));
+        var r = new Point(pInScreen.X / W, pInScreen.Y / H);
+        return clamp ? new Point(Math.Clamp(r.X, 0, 1), Math.Clamp(r.Y, 0, 1)) : r;
     }
 
     /// <summary>Ảnh BGRA hiện tại (chụp nhanh từ lưới).</summary>

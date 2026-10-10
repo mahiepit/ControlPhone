@@ -19,7 +19,7 @@ public partial class MainWindow
     DragState? drag;
 
     // chạm (ngón tay ảo)
-    sealed class TouchState { public List<PhoneDevice> Targets = []; public PhoneTile? Tile; public FrameworkElement Box = null!; public bool Pinch; public bool Viewer; public Point? Pending; public long LastMove; }
+    sealed class TouchState { public List<PhoneDevice> Targets = []; public PhoneTile? Tile; public FrameworkElement Box = null!; public bool Pinch; public bool Viewer; public Point? Pending; public double LastMove; public bool Lifted; public List<(double T, Point P)> Track = []; }
     TouchState? touch;
     PhoneDevice? hoverDev;
 
@@ -94,8 +94,7 @@ public partial class MainWindow
     {
         if (touch is { Viewer: false } t)
         {
-            t.Pending = t.Tile!.Norm(e.GetPosition(t.Box));
-            FlushMoveThrottled();
+            DragTouch(t.Tile!.Norm(e.GetPosition(t.Box), clamp: false));
             return;
         }
         if (drag == null) return;
@@ -172,21 +171,24 @@ public partial class MainWindow
     }
 
     // ---------------- chạm (dùng chung lưới + màn hình lớn) ----------------
+    static readonly System.Diagnostics.Stopwatch TouchClock = System.Diagnostics.Stopwatch.StartNew();
+    static double NowMs => TouchClock.Elapsed.TotalMilliseconds; // TickCount64 chỉ chính xác ~15 ms, không đủ để đo cú vuốt
+
     void StartTouch(List<PhoneDevice> targets, PhoneTile? tile, FrameworkElement box, Point p, bool viewer)
     {
         bool pinch = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
         touch = new TouchState { Targets = targets, Tile = tile, Box = box, Pinch = pinch, Viewer = viewer };
-        SendTouch(ControlMessages.ActionDown, p);
+        touch.Track.Add((NowMs, p));
+        SendTouch(touch, ControlMessages.ActionDown, p);
     }
 
-    void SendTouch(byte action, Point p)
+    static void SendTouch(TouchState t, byte action, Point p)
     {
-        if (touch == null) return;
-        foreach (var d in touch.Targets)
+        foreach (var d in t.Targets)
         {
             var s = d.ControlSession;
             if (s == null) continue;
-            if (touch.Pinch)
+            if (t.Pinch)
             {
                 s.Touch(action, p.X, p.Y, 1);
                 s.Touch(action, 1 - p.X, 1 - p.Y, 2);
@@ -195,22 +197,81 @@ public partial class MainWindow
         }
     }
 
-    void FlushMoveThrottled()
+    /// <summary>
+    /// Kéo chuột (toạ độ chưa cắt, có thể ra ngoài 0..1). Con trỏ trượt ra khỏi mép màn hình điện thoại = nhấc ngón
+    /// tay NGAY tại mép, như ngón thật trượt khỏi kính. Trước đây toạ độ bị ghim ở mép và vẫn gửi "chạm đứng yên" tới
+    /// lúc thả chuột → Android thấy ngón tay dừng (vận tốc ≈ 0) nên cú vuốt nhanh (vuốt lên đóng ứng dụng, vuốt thông
+    /// báo…) thành kéo chậm, thẻ ứng dụng bật về chỗ cũ.
+    /// </summary>
+    void DragTouch(Point raw)
     {
-        if (touch?.Pending is not { } p) return;
-        long now = Environment.TickCount64;
-        if (now - touch.LastMove < 12) return; // gửi tối đa ~80 lần/giây
-        touch.LastMove = now;
-        touch.Pending = null;
-        SendTouch(ControlMessages.ActionMove, p);
+        if (touch is not { Lifted: false } t) return;
+        var p = new Point(Math.Clamp(raw.X, 0, 1), Math.Clamp(raw.Y, 0, 1));
+        const double m = 0.01;
+        if (raw.X < -m || raw.X > 1 + m || raw.Y < -m || raw.Y > 1 + m)
+        {
+            t.Pending = null;
+            SendTouch(t, ControlMessages.ActionMove, p);
+            SendTouch(t, ControlMessages.ActionUp, p);
+            t.Lifted = true;
+            return;
+        }
+        double now = NowMs;
+        t.Track.Add((now, p));
+        while (t.Track.Count > 2 && now - t.Track[0].T > 200) t.Track.RemoveAt(0);
+        t.Pending = p;
+        if (now - t.LastMove < 8) return; // gửi tối đa ~120 lần/giây
+        t.LastMove = now;
+        t.Pending = null;
+        SendTouch(t, ControlMessages.ActionMove, p);
     }
 
     void EndTouch(Point p)
     {
-        if (touch == null) return;
-        if (touch.Pending is { } pend) SendTouch(ControlMessages.ActionMove, pend);
-        SendTouch(ControlMessages.ActionUp, p);
+        if (touch is not { } t) return;
         touch = null;
+        if (t.Lifted) return; // đã nhấc tay khi trượt khỏi mép
+        if (t.Pending is { } pend) { SendTouch(t, ControlMessages.ActionMove, pend); p = pend; }
+        if (FlingVelocity(t) is { } v) _ = FlingTailAsync(t, t.Track[^1].P, v);
+        else SendTouch(t, ControlMessages.ActionUp, p);
+    }
+
+    /// <summary>
+    /// Vuốt nhanh rồi thả chuột: tay người thường dừng một chút (vài chục ms) rồi mới nhả nút, trong khi ngón tay thật
+    /// nhấc lên lúc vẫn đang di chuyển. Android coi ngón dừng quá 40 ms là đã đứng yên (vận tốc 0) → cú vuốt không ăn.
+    /// Nếu vừa vuốt nhanh và thả trong vòng 90 ms sau khi dừng: trả về vận tốc (màn hình/giây) để nối thêm đuôi vuốt.
+    /// </summary>
+    static Vector? FlingVelocity(TouchState t)
+    {
+        if (t.Track.Count < 3) return null;
+        var last = t.Track[^1];
+        if (NowMs - last.T > 90) return null; // dừng hẳn rồi mới thả = kéo có chủ ý, giữ nguyên
+        var first = t.Track[0];
+        for (int i = t.Track.Count - 2; i >= 0; i--) { first = t.Track[i]; if (last.T - first.T >= 40) break; }
+        double dt = (last.T - first.T) / 1000;
+        if (dt < 0.015) return null;
+        var v = (last.P - first.P) / dt;
+        return v.Length >= 1.2 ? v : null;
+    }
+
+    /// <summary>
+    /// Đuôi vuốt: 3 điểm cách nhau ~12–15 ms theo đúng hướng/vận tốc vừa vuốt (đi thêm vài % màn hình), rồi nhấc tay.
+    /// Dừng &gt; 40 ms thì Android đo lại từ đầu → 3 điểm này đủ cho nó tính đúng vận tốc.
+    /// </summary>
+    static async Task FlingTailAsync(TouchState t, Point from, Vector v)
+    {
+        var p = from;
+        double prev = NowMs - 12;
+        for (int i = 0; i < 3; i++)
+        {
+            if (i > 0) await Task.Delay(12);
+            double now = NowMs;
+            p += v * Math.Min(0.02, (now - prev) / 1000);
+            p = new Point(Math.Clamp(p.X, 0, 1), Math.Clamp(p.Y, 0, 1));
+            prev = now;
+            SendTouch(t, ControlMessages.ActionMove, p);
+        }
+        SendTouch(t, ControlMessages.ActionUp, p);
     }
 
     // ---------------- bàn phím → điện thoại ----------------

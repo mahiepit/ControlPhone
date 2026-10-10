@@ -66,9 +66,8 @@ public partial class MainWindow
         };
         VScreen.MouseMove += (_, e) =>
         {
-            if (touch is not { Viewer: true } t) return;
-            t.Pending = VNorm(e.GetPosition(VScreen));
-            FlushMoveThrottled();
+            if (touch is not { Viewer: true }) return;
+            DragTouch(VNorm(e.GetPosition(VScreen), clamp: false));
         };
         VScreen.MouseUp += (_, e) =>
         {
@@ -89,13 +88,15 @@ public partial class MainWindow
 
     PhoneDevice? ViewerDev => viewerId != null ? manager.Get(viewerId) : null;
 
-    Point VNorm(Point p)
+    /// <summary>Toạ độ chuẩn hoá 0..1 trên màn hình lớn; clamp=false: giữ nguyên khi ra ngoài (để biết đã trượt khỏi mép).</summary>
+    Point VNorm(Point p, bool clamp = true)
     {
         double W = VScreen.ActualWidth, H = VScreen.ActualHeight;
         double vw = vBmp?.PixelWidth ?? 9, vh = vBmp?.PixelHeight ?? 18.5;
         double sc = Math.Min(W / vw, H / vh);
         double w = vw * sc, h = vh * sc;
-        return new Point(Math.Clamp((p.X - (W - w) / 2) / w, 0, 1), Math.Clamp((p.Y - (H - h) / 2) / h, 0, 1));
+        var r = new Point((p.X - (W - w) / 2) / w, (p.Y - (H - h) / 2) / h);
+        return clamp ? new Point(Math.Clamp(r.X, 0, 1), Math.Clamp(r.Y, 0, 1)) : r;
     }
 
     void OpenViewer(string id)
