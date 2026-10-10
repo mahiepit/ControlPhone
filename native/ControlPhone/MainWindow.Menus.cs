@@ -193,7 +193,7 @@ public partial class MainWindow
         if (ids.Count == 0) return;
         manager.SetPaused(ids, paused, out var n);
         Ui.Toast(paused ? T("Đã tạm dừng xem {0} máy (vẫn điều khiển được)", n) : T("Đã tiếp tục xem {0} máy", n), "ok");
-        orderSig = ""; RenderAll();
+        RenderAll();
     }
 
     void RenameDevice(PhoneDevice d)
@@ -202,7 +202,7 @@ public partial class MainWindow
         if (v == null) return;
         Store.Meta(d.Id).Label = v.Trim()[..Math.Min(40, v.Trim().Length)];
         Store.Save();
-        d.Changed(); orderSig = ""; RenderAll();
+        d.Changed(); RenderAll();
     }
 
     void RenumberDevice(PhoneDevice d)
@@ -216,7 +216,7 @@ public partial class MainWindow
         meta.Num = n;
         Store.State.NextNum = Math.Max(Store.State.NextNum, n + 1);
         Store.Save();
-        d.Changed(); orderSig = ""; RenderAll();
+        d.Changed(); RenderAll();
     }
 
     void RenumberAll()
@@ -229,7 +229,7 @@ public partial class MainWindow
         Store.State.NextNum = Math.Max(n, Store.State.Devices.Values.Max(x => x.Num) + 1);
         Store.Save();
         foreach (var d in manager.Devices) d.Changed();
-        orderSig = ""; RenderAll();
+        RenderAll();
         Ui.Toast("Đã đánh số lại", "ok");
     }
 

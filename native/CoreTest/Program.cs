@@ -40,6 +40,58 @@ if (args.Contains("store"))
     return fail == 0 ? 0 : 1;
 }
 
+// sắp xếp lưới: luôn ra đúng thứ tự, và đổi số 1 máy chỉ dời 1 ô (dotnet run -c Release -- grid)
+if (args.Contains("grid"))
+{
+    var rnd = new Random(7);
+    var names = Enumerable.Range(1, 60).Select(i => "x" + i).ToList();
+    var col = new System.Collections.ObjectModel.ObservableCollection<string>(names.Take(39));
+    int moveEvents = 0;
+    col.CollectionChanged += (_, e) => { if (e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Move) moveEvents += 1000; else moveEvents++; };
+    // 1 máy đổi số: từ vị trí 5 xuống 30
+    var t1 = col.ToList(); var m = t1[5]; t1.RemoveAt(5); t1.Insert(30, m);
+    int ops = ControlPhone.GridOrder.Sync(col, t1);
+    Check(col.SequenceEqual(t1) && ops <= 2 && moveEvents <= 2, "Đổi số 1 máy chỉ dời 1 ô (không dựng lại lưới)", $"{ops} thao tác");
+    // 2 máy đổi số cho nhau
+    moveEvents = 0;
+    var t2 = col.ToList(); (t2[3], t2[20]) = (t2[20], t2[3]);
+    ops = ControlPhone.GridOrder.Sync(col, t2);
+    Check(col.SequenceEqual(t2) && ops <= 4, "2 máy đổi số cho nhau", $"{ops} thao tác");
+    // không đổi gì → không thao tác
+    Check(ControlPhone.GridOrder.Sync(col, col.ToList()) == 0, "Không đổi thứ tự → không đụng lưới");
+    // ngẫu nhiên: thêm / bớt / xáo trộn 500 lần luôn ra đúng danh sách
+    bool allOk = true;
+    for (int k = 0; k < 500 && allOk; k++)
+    {
+        var target = names.OrderBy(_ => rnd.Next()).Take(rnd.Next(0, 60)).ToList();
+        if (rnd.Next(3) == 0) target.Sort(StringComparer.Ordinal);
+        ControlPhone.GridOrder.Sync(col, target);
+        allOk = col.SequenceEqual(target);
+    }
+    Check(allOk, "500 lần thêm / bớt / xáo trộn ngẫu nhiên đều đúng thứ tự");
+    // WPF giữ nguyên ô (container) khi dời → không tạo lại ô, không mất hình
+    UiDo(() =>
+    {
+        var src = new System.Collections.ObjectModel.ObservableCollection<string>(names.Take(39));
+        var ic = new System.Windows.Controls.ItemsControl
+        {
+            ItemsSource = src,
+            ItemsPanel = new System.Windows.Controls.ItemsPanelTemplate(new System.Windows.FrameworkElementFactory(typeof(System.Windows.Controls.WrapPanel))),
+        };
+        var win = new System.Windows.Window { Content = ic, Width = 800, Height = 600, Left = -20000, ShowInTaskbar = false, ShowActivated = false };
+        win.Show(); win.UpdateLayout();
+        var before = names.Take(39).ToDictionary(n => n, n => ic.ItemContainerGenerator.ContainerFromItem(n));
+        var t = src.ToList(); var x = t[5]; t.RemoveAt(5); t.Insert(30, x);
+        ControlPhone.GridOrder.Sync(src, t);
+        win.UpdateLayout();
+        int same = names.Take(39).Count(n => ReferenceEquals(before[n], ic.ItemContainerGenerator.ContainerFromItem(n)));
+        win.Close();
+        Check(same == 39, "Dời ô trên lưới WPF giữ nguyên ô cũ (không tạo lại)", $"{same}/39 ô giữ nguyên");
+    });
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // giữ USB có lưu lượng khi màn hình đứng yên: 1 phiên trên 1 máy, để yên 12 giây (dotnet run -c Release -- keepalive [serial])
 if (args.Contains("keepalive"))
 {

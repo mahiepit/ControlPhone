@@ -105,6 +105,7 @@ public partial class MainWindow
         if (viewerId == id) return;
         if (viewerId != null && manager.Get(viewerId) is { } old) { manager.ReleaseHq(old); old.IsActive = false; }
         viewerId = id;
+        frameTimer.Interval = TimeSpan.FromMilliseconds(15); // màn hình lớn tới 30–60 khung/giây
         vBmp = null;
         VImg.Source = null;
         VOv.Visibility = Visibility.Visible;
@@ -121,6 +122,7 @@ public partial class MainWindow
     {
         if (viewerId != null && manager.Get(viewerId) is { } d) { manager.ReleaseHq(d); d.IsActive = false; }
         viewerId = null;
+        frameTimer.Interval = TimeSpan.FromMilliseconds(30); // chỉ còn ô lưới (tối đa 15 khung/giây)
         vBmp = null;
         VImg.Source = null;
         ViewerPane.Visibility = Visibility.Collapsed;

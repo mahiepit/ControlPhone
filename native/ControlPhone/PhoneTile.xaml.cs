@@ -25,23 +25,48 @@ public partial class PhoneTile : UserControl
     public PhoneTile()
     {
         InitializeComponent();
-        Loaded += (_, _) => { Live.Add(this); SetTileWidth(TileWidth); };
-        Unloaded += (_, _) => Live.Remove(this);
+        // ô mới gắn / gắn lại vào lưới: vẽ ngay khung đã giải mã gần nhất (không phải chờ keyframe tới 20 giây)
+        Loaded += (_, _) => { Live.Add(this); Attach(); SetTileWidth(TileWidth); if (bmp == null) Device?.Frames?.MarkDirty(); UpdateSpinner(); };
+        // bỏ đăng ký sự kiện của máy khi ô rời lưới → ô cũ (kèm ảnh) được giải phóng, không giữ mãi trong RAM
+        Unloaded += (_, _) => { Live.Remove(this); Detach(); UpdateSpinner(); };
         DataContextChanged += (_, e) =>
         {
-            if (bound != null) bound.PropertyChanged -= OnDevChanged;
+            Detach();
             bound = e.NewValue as PhoneDevice;
-            if (bound != null) bound.PropertyChanged += OnDevChanged;
+            if (IsLoaded) Attach();
             bmp = null; Img.Source = null;
+            bound?.Frames?.MarkDirty();
             UpdateOverlayIcon();
+            UpdateSpinner();
         };
-        var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.1)) { RepeatBehavior = RepeatBehavior.Forever };
-        SpinRot.BeginAnimation(RotateTransform.AngleProperty, spin);
     }
+
+    bool attached, spinning;
+    void Attach() { if (bound != null && !attached) { bound.PropertyChanged += OnDevChanged; attached = true; } }
+    void Detach() { if (bound != null && attached) bound.PropertyChanged -= OnDevChanged; attached = false; }
 
     void OnDevChanged(object? s, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is "" or null) { UpdateOverlayIcon(); FitScreen(); }
+        UpdateSpinner();
+    }
+
+    /// <summary>
+    /// Vòng xoay "đang kết nối" chỉ chạy khi đang hiện (và chỉ 20 khung/giây). Một hoạt ảnh chạy mãi — kể cả bị ẩn —
+    /// buộc WPF vẽ lại cả cửa sổ ở tốc độ màn hình liên tục: 39 ô là tốn CPU/GPU dù điện thoại đứng yên.
+    /// </summary>
+    void UpdateSpinner()
+    {
+        bool want = IsLoaded && Device is { ShowSpinner: true };
+        if (want == spinning) return;
+        spinning = want;
+        DoubleAnimation? spin = null;
+        if (want)
+        {
+            spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(1.1)) { RepeatBehavior = RepeatBehavior.Forever };
+            Timeline.SetDesiredFrameRate(spin, 20);
+        }
+        SpinRot.BeginAnimation(RotateTransform.AngleProperty, spin);
     }
 
     void UpdateOverlayIcon()

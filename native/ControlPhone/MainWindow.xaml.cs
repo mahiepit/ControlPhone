@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows;
@@ -17,16 +18,19 @@ public partial class MainWindow : Window
 {
     readonly DeviceManager manager;
     readonly Actions actions;
-    readonly ListCollectionView view;
+    /// <summary>Các ô trên lưới, đúng thứ tự hiển thị. Chỉ đổi bằng thêm / bớt / dời từng ô (giữ nguyên ô và hình đang có).</summary>
+    readonly ObservableCollection<PhoneDevice> shown = [];
     readonly HashSet<string> selected = [];
     string filter = Store.Ui.Filter;
     string search = "";
     string sort = Store.Ui.Sort;
     bool syncOff = Store.Ui.SyncOff;
-    string orderSig = "";
     readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly DispatcherTimer tickTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    // chép khung hình mới (~33 lần/giây; ~66 lần khi mở màn hình lớn). KHÔNG dùng CompositionTarget.Rendering:
+    // nó bắt WPF vẽ lại cả cửa sổ theo tần số màn hình mãi mãi; với hẹn giờ, WPF chỉ vẽ khi có ảnh thật sự đổi.
+    readonly DispatcherTimer frameTimer = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(30) };
     long lastBytes;
     readonly Stopwatch statsClock = Stopwatch.StartNew();
     static readonly string Version = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "2";
@@ -42,10 +46,7 @@ public partial class MainWindow : Window
         actions = new Actions(manager, Dispatcher);
         foreach (var id in Store.Ui.Selected) selected.Add(id);
 
-        view = (ListCollectionView)CollectionViewSource.GetDefaultView(manager.Devices);
-        view.Filter = o => MatchFilter((PhoneDevice)o);
-        view.CustomSort = new DeviceSorter(this);
-        GridItems.ItemsSource = view;
+        GridItems.ItemsSource = shown;
 
         manager.ListChanged += () => refreshTimer.Start();
         manager.Log += (m, err) => Ui.Toast(m, err ? "err" : "");
@@ -54,7 +55,7 @@ public partial class MainWindow : Window
         refreshTimer.Tick += (_, _) => { refreshTimer.Stop(); RenderAll(); };
         statsTimer.Tick += (_, _) => UpdateBandwidth();
         tickTimer.Tick += (_, _) => { UpdateVisibility(); manager.WatchTick(); };
-        CompositionTarget.Rendering += OnRender;
+        frameTimer.Tick += OnRender;
 
         InitTopbar();
         InitSidebar();
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
             manager.Start();
             statsTimer.Start();
             tickTimer.Start();
+            frameTimer.Start();
             RenderAll();
             if (SelfTest.On) _ = RunSelfTest();
         };
@@ -92,6 +94,8 @@ public partial class MainWindow : Window
     {
         var vp = new Rect(0, -150, GridScroll.ActualWidth, GridScroll.ActualHeight + 300);
         var shown = new HashSet<PhoneDevice>();
+        // cửa sổ thu nhỏ: không ô nào thấy được → không giải mã (mở lại thì tự xin keyframe, có hình sau ~1 giây)
+        if (WindowState != WindowState.Minimized)
         foreach (var t in PhoneTile.Live)
         {
             if (t.Device is not { } d || !t.IsVisible) continue;
@@ -154,16 +158,14 @@ public partial class MainWindow : Window
     };
 
     /// <summary>Danh sách ô đang hiển thị, đúng thứ tự trên màn hình.</summary>
-    List<PhoneDevice> VisibleDevices() => view.Cast<PhoneDevice>().ToList();
+    List<PhoneDevice> VisibleDevices() => shown.ToList();
 
     void RenderAll()
     {
-        // chỉ dựng lại lưới khi thứ tự / bộ lọc thực sự đổi (dựng lại tạo lại ô)
         var sorter = new DeviceSorter(this);
         var list = manager.Devices.Where(MatchFilter).ToList();
         list.Sort((a, b) => sorter.Compare(a, b));
-        var sig = string.Join(',', list.Select(x => x.Id));
-        if (sig != orderSig) { orderSig = sig; view.Refresh(); }
+        GridOrder.Sync(shown, list);
         selected.RemoveWhere(id => manager.Get(id) is { SoloHidden: true }); // máy bị ẩn không còn nhận thao tác đồng bộ
         foreach (var d in manager.Devices) d.IsSelected = selected.Contains(d.Id);
         RenderSidebar();
@@ -175,7 +177,7 @@ public partial class MainWindow : Window
 
     void UpdateEmpty()
     {
-        int shown = view.Count;
+        int shown = this.shown.Count;
         if (manager.Devices.Count == 0)
         {
             EmptyIcon.Text = Icons.Get("phone");
@@ -194,8 +196,12 @@ public partial class MainWindow : Window
         StatSel.Text = T("{0} đã chọn", selected.Count);
         if (AbCount != null) AbCount.Text = T("Áp dụng cho {0} máy:", selected.Count);
         UpdateSyncUi();
-        Store.Ui.Selected = selected.ToList();
-        Store.SaveUi();
+        // chỉ ghi native-ui.json khi danh sách chọn thật sự đổi (hàm này chạy mỗi 2 giây)
+        if (Store.Ui.Selected.Count != selected.Count || !Store.Ui.Selected.All(selected.Contains))
+        {
+            Store.Ui.Selected = selected.ToList();
+            Store.SaveUi();
+        }
     }
 
     void UpdateBandwidth()
@@ -213,7 +219,7 @@ public partial class MainWindow : Window
     void RefreshSelection()
     {
         foreach (var d in manager.Devices) d.IsSelected = selected.Contains(d.Id);
-        if (filter == "sel") { orderSig = ""; RenderAll(); }
+        if (filter == "sel") { RenderAll(); }
         RenderStats();
         RenderSidebarCounts();
         UpdateViewerHead();
@@ -285,7 +291,7 @@ public partial class MainWindow : Window
         SizeSlider.ValueChanged += (_, e) => SetTileW(e.NewValue);
         BtnFit.Click += (_, _) => FitTiles();
         foreach (ComboBoxItem it in SortSel.Items) if ((string)it.Tag == sort) SortSel.SelectedItem = it;
-        SortSel.SelectionChanged += (_, _) => { sort = (string)((ComboBoxItem)SortSel.SelectedItem).Tag; Store.Ui.Sort = sort; Store.SaveUi(); orderSig = ""; RenderAll(); };
+        SortSel.SelectionChanged += (_, _) => { sort = (string)((ComboBoxItem)SortSel.SelectedItem).Tag; Store.Ui.Sort = sort; Store.SaveUi(); RenderAll(); };
         foreach (var (code, name) in I18n.Langs) LangSel.Items.Add(new ComboBoxItem { Content = name, Tag = code, IsSelected = code == I18n.Lang });
         LangSel.SelectionChanged += (_, _) =>
         {
@@ -314,7 +320,7 @@ public partial class MainWindow : Window
 
     void FitTiles()
     {
-        int n = Math.Max(1, view.Count);
+        int n = Math.Max(1, shown.Count);
         // vùng lưới (trừ padding 6px mỗi bên + thanh cuộn)
         double W = GridScroll.ActualWidth - 12 - 12, H = GridScroll.ActualHeight - 12;
         // một ô rộng w: chiếm (w + 10) ngang; cao = (w - 14) × tỉ lệ + 36 (lề 10 + viền/đệm 4 + tiêu đề 22)
@@ -348,7 +354,9 @@ public partial class MainWindow : Window
         BtnSync.ToolTip = syncOff
             ? T("Đồng bộ đang TẮT — thao tác chỉ áp dụng cho máy đang chạm. Bấm (F3) để bật lại.")
             : T("Tự động đồng bộ khi chọn từ 2 máy trở lên (Ctrl+click để chọn nhóm). Bấm (F3) để tắt tạm.");
-        Application.Current.Resources["SelBrush"] = Theme.Brush(on ? "Warn" : "Accent");
+        // đổi tài nguyên toàn app làm WPF dò lại cả cây giao diện → chỉ đổi khi màu thật sự khác
+        var sel = Theme.Brush(on ? "Warn" : "Accent");
+        if (!ReferenceEquals(Application.Current.Resources["SelBrush"], sel)) Application.Current.Resources["SelBrush"] = sel;
     }
 
     void SetLive(bool on)
@@ -376,7 +384,6 @@ public partial class MainWindow : Window
             Ui.Toast("Đã hiển thị lại tất cả máy", "ok");
             if (Store.Ui.TileWBeforeSolo > 0) SetTileW(Store.Ui.TileWBeforeSolo);
         }
-        orderSig = "";
         RenderAll();
     }
 
@@ -392,7 +399,7 @@ public partial class MainWindow : Window
 
     void InitSidebar()
     {
-        SearchBox.TextChanged += (_, _) => { search = SearchBox.Text.Trim(); orderSig = ""; RenderAll(); };
+        SearchBox.TextChanged += (_, _) => { search = SearchBox.Text.Trim(); RenderAll(); };
         BtnNewGroup.Click += (_, _) => NewGroup();
         BtnConnect.Click += async (_, _) => await ConnectAddr();
         ConnAddr.KeyDown += async (_, e) => { if (e.Key == Key.Enter) await ConnectAddr(); };
@@ -502,7 +509,6 @@ public partial class MainWindow : Window
     {
         filter = f;
         Store.Ui.Filter = f; Store.SaveUi();
-        orderSig = "";
         RenderAll();
     }
 
@@ -529,7 +535,6 @@ public partial class MainWindow : Window
             manager.Get(id)?.Changed();
         }
         Store.Save();
-        orderSig = "";
         RenderAll();
     }
 
@@ -540,7 +545,7 @@ public partial class MainWindow : Window
         if (closingDone) return;
         e.Cancel = true;
         Hide();
-        CompositionTarget.Rendering -= OnRender;
+        frameTimer.Stop();
         if (viewerId != null && manager.Get(viewerId) is { } vd) manager.ReleaseHq(vd);
         manager.Dispose();
         await Task.Delay(1500); // để điện thoại kịp dọn (bật lại màn hình thật…) trước khi cắt adb
