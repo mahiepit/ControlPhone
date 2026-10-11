@@ -520,4 +520,13 @@ export default {
   "Đang đọc thông tin…": "正在讀取資訊…",
   "Đã sao chép báo cáo": "報告已複製",
   "Đang xem ở màn hình lớn": "正在大畫面檢視",
+  "Ẩn máy mất kết nối": "隱藏已斷線裝置",
+  "Ẩn máy mất kết nối ({0})": "隱藏已斷線裝置 ({0})",
+  "Chỉ hiển thị máy đang kết nối — đang ẩn {0} máy mất kết nối": "僅顯示已連線裝置 — 已隱藏 {0} 台斷線裝置",
+  "Chỉ hiển thị máy đang kết nối: ẩn các máy mất kết nối khỏi lưới (máy kết nối lại sẽ tự hiện). Bấm lại để hiện tất cả.": "僅顯示已連線裝置：從格狀檢視隱藏已斷線裝置（重新連線後自動顯示）。再按一次顯示全部。",
+  "Không chọn lại được bàn phím:": "無法還原鍵盤：",
+  "Không chọn được bàn phím:": "無法選擇鍵盤：",
+  "Không cài được bàn phím:": "無法安裝鍵盤：",
+  "Đã bật lại bàn phím điện thoại:": "已還原手機鍵盤：",
+  "config.json rỗng": "config.json 為空",
 };

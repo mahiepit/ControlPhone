@@ -66,6 +66,8 @@ public sealed class UiPrefs
     public string Theme { get; set; } = "dark";
     public string Lang { get; set; } = "";
     public bool SyncOff { get; set; }
+    /// <summary>Chỉ hiển thị máy đang kết nối (ẩn máy mất kết nối khỏi lưới).</summary>
+    public bool HideOffline { get; set; }
     public bool Sidebar { get; set; } = true;
     public List<string> ShellHist { get; set; } = [];
     public string PushDir { get; set; } = "/sdcard/Download/";

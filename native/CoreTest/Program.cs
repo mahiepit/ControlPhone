@@ -139,6 +139,16 @@ if (args.Contains("xaml"))
         tile.Measure(new System.Windows.Size(400, 800)); tile.Arrange(new System.Windows.Rect(0, 0, 210, 460)); tile.UpdateLayout();
         Check(dev.PcKeyboardOn && tile.ActualHeight > 300, "Dựng ô máy (có biểu tượng bàn phím)", $"{tile.ActualWidth:0}×{tile.ActualHeight:0}");
         Store.State.Devices.Remove("test"); // không lưu máy giả vào cấu hình
+        // dựng cửa sổ chính (không hiện, không kết nối máy): bắt lỗi XAML / khởi tạo
+        try
+        {
+            var w = new ControlPhone.MainWindow();
+            var btn = w.FindName("BtnHideOff") as System.Windows.Controls.Button;
+            var lbl = w.FindName("HideOffLabel") as System.Windows.Controls.TextBlock;
+            Check(btn != null && lbl?.Text.Length > 0, "Dựng cửa sổ chính (có nút Ẩn máy mất kết nối)", lbl?.Text ?? "");
+            w.Close();
+        }
+        catch (Exception e) { Check(false, "Dựng cửa sổ chính", e.GetType().Name + ": " + e.Message); }
     });
     Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
     return fail == 0 ? 0 : 1;

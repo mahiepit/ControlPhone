@@ -520,4 +520,13 @@ export default {
   "Đang đọc thông tin…": "Reading info…",
   "Đã sao chép báo cáo": "Report copied",
   "Đang xem ở màn hình lớn": "Viewing in large view",
+  "Ẩn máy mất kết nối": "Hide disconnected",
+  "Ẩn máy mất kết nối ({0})": "Hide disconnected ({0})",
+  "Chỉ hiển thị máy đang kết nối — đang ẩn {0} máy mất kết nối": "Showing connected phones only — {0} disconnected hidden",
+  "Chỉ hiển thị máy đang kết nối: ẩn các máy mất kết nối khỏi lưới (máy kết nối lại sẽ tự hiện). Bấm lại để hiện tất cả.": "Show connected phones only: hide disconnected phones from the grid (they reappear when they reconnect). Click again to show all.",
+  "Không chọn lại được bàn phím:": "Could not restore the keyboard:",
+  "Không chọn được bàn phím:": "Could not select the keyboard:",
+  "Không cài được bàn phím:": "Could not install the keyboard:",
+  "Đã bật lại bàn phím điện thoại:": "Phone keyboard restored:",
+  "config.json rỗng": "config.json is empty",
 };

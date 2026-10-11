@@ -75,6 +75,10 @@ public partial class MainWindow
         await Step("filter usb", () => SetFilter("usb")); SelfTest.Capture(this, "07_filter_usb"); await Step("filter back", () => SetFilter(origFilter));
         await Step("search", () => SearchBox.Text = d.Num.ToString()); SelfTest.Capture(this, "08_search"); await Step("search clear", () => SearchBox.Text = "");
         await Step("sort battery", () => SortSel.SelectedIndex = 3); await Step("sort num", () => SortSel.SelectedIndex = 0);
+        bool origHide = hideOffline;
+        await Step("hide offline", () => SetHideOffline(true)); await Idle(400); SelfTest.Capture(this, "08b_hide_offline");
+        SelfTest.Log($"hide offline: {shown.Count} ô hiển thị, {shown.Count(x => x.Status == "offline")} ô mất kết nối còn trên lưới, {manager.Devices.Count(x => x.Status == "offline")} máy mất kết nối");
+        await Step("hide offline back", () => SetHideOffline(origHide));
         await Step("fit", FitTiles); await Idle(600); SelfTest.Capture(this, "09_fit"); await Step("size back", () => SetTileW(origW));
         await Step("solo", () => SetSolo([d.Id, d2.Id])); await Task.Delay(4000); SelfTest.Capture(this, "10_solo");
         await Step("solo off", () => SetSolo(null)); await Task.Delay(3000);

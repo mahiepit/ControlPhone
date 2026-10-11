@@ -520,4 +520,13 @@ export default {
   "Đang đọc thông tin…": "Lese Infos…",
   "Đã sao chép báo cáo": "Bericht kopiert",
   "Đang xem ở màn hình lớn": "In Großansicht geöffnet",
+  "Ẩn máy mất kết nối": "Getrennte ausblenden",
+  "Ẩn máy mất kết nối ({0})": "Getrennte ausblenden ({0})",
+  "Chỉ hiển thị máy đang kết nối — đang ẩn {0} máy mất kết nối": "Nur verbundene Telefone — {0} getrennte ausgeblendet",
+  "Chỉ hiển thị máy đang kết nối: ẩn các máy mất kết nối khỏi lưới (máy kết nối lại sẽ tự hiện). Bấm lại để hiện tất cả.": "Nur verbundene Telefone anzeigen: getrennte Telefone ausblenden (sie erscheinen wieder, sobald sie verbunden sind). Erneut klicken, um alle anzuzeigen.",
+  "Không chọn lại được bàn phím:": "Tastatur konnte nicht wiederhergestellt werden:",
+  "Không chọn được bàn phím:": "Tastatur konnte nicht ausgewählt werden:",
+  "Không cài được bàn phím:": "Tastatur konnte nicht installiert werden:",
+  "Đã bật lại bàn phím điện thoại:": "Telefontastatur wiederhergestellt:",
+  "config.json rỗng": "config.json ist leer",
 };

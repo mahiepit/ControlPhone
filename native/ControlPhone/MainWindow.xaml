@@ -63,6 +63,13 @@
                     <ComboBoxItem Tag="status" Content="Theo trạng thái"/>
                     <ComboBoxItem Tag="battery" Content="Theo pin"/>
                 </ComboBox>
+                <Button x:Name="BtnHideOff" DockPanel.Dock="Right" Style="{DynamicResource Ghost}" Margin="4,0"
+                        ToolTip="Chỉ hiển thị máy đang kết nối: ẩn các máy mất kết nối khỏi lưới (máy kết nối lại sẽ tự hiện). Bấm lại để hiện tất cả.">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="HideOffIcon" Text="&#xE71A;" FontFamily="{StaticResource IconFont}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="HideOffLabel" Text="Ẩn máy mất kết nối" Tag="no-i18n"/>
+                    </StackPanel>
+                </Button>
                 <Button x:Name="BtnFit" DockPanel.Dock="Right" Style="{DynamicResource IconGhost}" Content="&#xE9A6;" ToolTip="Vừa khít màn hình"/>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0" ToolTip="Kích thước ô">
                     <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource IconFont}" Foreground="{DynamicResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>

@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     string search = "";
     string sort = Store.Ui.Sort;
     bool syncOff = Store.Ui.SyncOff;
+    bool hideOffline = Store.Ui.HideOffline;
     readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly DispatcherTimer tickTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
@@ -131,6 +132,7 @@ public partial class MainWindow : Window
     bool MatchFilter(PhoneDevice d)
     {
         if (d.SoloHidden) return false; // chế độ "Chỉ hiển thị các máy này"
+        if (hideOffline && d.Status == "offline") return false; // "Ẩn máy mất kết nối" (kết hợp với mọi bộ lọc)
         var f = filter;
         if (f == "sel" && !selected.Contains(d.Id)) return false;
         if (f == "usb" && d.Transport != "usb") return false;
@@ -196,6 +198,7 @@ public partial class MainWindow : Window
         StatSel.Text = T("{0} đã chọn", selected.Count);
         if (AbCount != null) AbCount.Text = T("Áp dụng cho {0} máy:", selected.Count);
         UpdateSyncUi();
+        UpdateHideOffUi();
         // chỉ ghi native-ui.json khi danh sách chọn thật sự đổi (hàm này chạy mỗi 2 giây)
         if (Store.Ui.Selected.Count != selected.Count || !Store.Ui.Selected.All(selected.Contains))
         {
@@ -290,6 +293,8 @@ public partial class MainWindow : Window
         PhoneTile.TileWidth = SizeSlider.Value;
         SizeSlider.ValueChanged += (_, e) => SetTileW(e.NewValue);
         BtnFit.Click += (_, _) => FitTiles();
+        HideOffIcon.Text = Icons.Get("plug");
+        BtnHideOff.Click += (_, _) => SetHideOffline(!hideOffline);
         foreach (ComboBoxItem it in SortSel.Items) if ((string)it.Tag == sort) SortSel.SelectedItem = it;
         SortSel.SelectionChanged += (_, _) => { sort = (string)((ComboBoxItem)SortSel.SelectedItem).Tag; Store.Ui.Sort = sort; Store.SaveUi(); RenderAll(); };
         foreach (var (code, name) in I18n.Langs) LangSel.Items.Add(new ComboBoxItem { Content = name, Tag = code, IsSelected = code == I18n.Lang });
@@ -357,6 +362,23 @@ public partial class MainWindow : Window
         // đổi tài nguyên toàn app làm WPF dò lại cả cây giao diện → chỉ đổi khi màu thật sự khác
         var sel = Theme.Brush(on ? "Warn" : "Accent");
         if (!ReferenceEquals(Application.Current.Resources["SelBrush"], sel)) Application.Current.Resources["SelBrush"] = sel;
+    }
+
+    void SetHideOffline(bool on)
+    {
+        hideOffline = on;
+        Store.Ui.HideOffline = on; Store.SaveUi();
+        int n = manager.Devices.Count(d => !d.SoloHidden && d.Status == "offline");
+        Ui.Toast(on ? T("Chỉ hiển thị máy đang kết nối — đang ẩn {0} máy mất kết nối", n) : T("Đã hiển thị lại tất cả máy"), "ok");
+        RenderAll();
+    }
+
+    void UpdateHideOffUi()
+    {
+        int n = manager.Devices.Count(d => !d.SoloHidden && d.Status == "offline");
+        HideOffLabel.Text = hideOffline && n > 0 ? T("Ẩn máy mất kết nối ({0})", n) : T("Ẩn máy mất kết nối");
+        var style = hideOffline ? "Primary" : "Ghost";
+        if (!Equals(BtnHideOff.Tag, style)) { BtnHideOff.Tag = style; BtnHideOff.SetResourceReference(StyleProperty, style); }
     }
 
     void SetLive(bool on)

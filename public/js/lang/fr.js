@@ -520,4 +520,13 @@ export default {
   "Đang đọc thông tin…": "Lecture des infos…",
   "Đã sao chép báo cáo": "Rapport copié",
   "Đang xem ở màn hình lớn": "Affiché en grande vue",
+  "Ẩn máy mất kết nối": "Masquer les déconnectés",
+  "Ẩn máy mất kết nối ({0})": "Masquer les déconnectés ({0})",
+  "Chỉ hiển thị máy đang kết nối — đang ẩn {0} máy mất kết nối": "Téléphones connectés uniquement — {0} déconnectés masqués",
+  "Chỉ hiển thị máy đang kết nối: ẩn các máy mất kết nối khỏi lưới (máy kết nối lại sẽ tự hiện). Bấm lại để hiện tất cả.": "Afficher uniquement les téléphones connectés : masquer les téléphones déconnectés (ils réapparaissent à la reconnexion). Cliquez à nouveau pour tout afficher.",
+  "Không chọn lại được bàn phím:": "Impossible de rétablir le clavier :",
+  "Không chọn được bàn phím:": "Impossible de sélectionner le clavier :",
+  "Không cài được bàn phím:": "Impossible d'installer le clavier :",
+  "Đã bật lại bàn phím điện thoại:": "Clavier du téléphone rétabli :",
+  "config.json rỗng": "config.json est vide",
 };
