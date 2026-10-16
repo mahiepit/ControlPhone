@@ -529,4 +529,10 @@ export default {
   "Không cài được bàn phím:": "Tastatur konnte nicht installiert werden:",
   "Đã bật lại bàn phím điện thoại:": "Telefontastatur wiederhergestellt:",
   "config.json rỗng": "config.json ist leer",
+  "Không khởi động được scrcpy trên máy này (Android {0})": "scrcpy konnte auf diesem Telefon nicht gestartet werden (Android {0})",
+  "Tự thử lại mỗi phút · nhật ký: data\\logs": "Neuer Versuch jede Minute · Protokoll: data\\logs",
+  "scrcpy-server đã thoát trước khi mở kết nối": "scrcpy-server wurde vor dem Verbindungsaufbau beendet",
+  "scrcpy-server đã thoát trước khi mở kết nối: {0}": "scrcpy-server wurde vor dem Verbindungsaufbau beendet: {0}",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)": "scrcpy-server hat keine Verbindung geöffnet (läuft, antwortet aber nicht)",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi): {0}": "scrcpy-server hat keine Verbindung geöffnet (läuft, antwortet aber nicht): {0}",
 };

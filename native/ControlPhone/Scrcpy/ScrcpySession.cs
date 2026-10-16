@@ -76,7 +76,9 @@ public sealed class ScrcpySession : IDisposable
         long size = -1;
         try
         {
-            var o = await AdbClient.ShellAsync(a, $"rm -f /data/local/tmp/controlphone-*.jar; stat -c %s {ServerRemote} 2>/dev/null", 8000);
+            // chỉ xoá bản sao của từng phiên cũ (controlphone-<scid 8 ký tự>.jar). KHÔNG dùng controlphone-*.jar: mẫu đó
+            // xoá luôn controlphone-server.jar → mỗi lần thử lại đều push lại, và có thể xoá đúng lúc phiên khác đang chép nó
+            var o = await AdbClient.ShellAsync(a, $"rm -f /data/local/tmp/controlphone-????????.jar; stat -c %s {ServerRemote} 2>/dev/null", 8000);
             long.TryParse(o.Trim(), out size);
         }
         catch { /* bỏ qua */ }
@@ -86,6 +88,10 @@ public sealed class ScrcpySession : IDisposable
     }));
 
     public static void ForgetPushed(string addr) => Pushes.TryRemove(addr, out _);
+
+    /// <summary>Dòng lệnh đã chạy + toàn bộ đầu ra gần nhất của scrcpy-server (tối đa 30 dòng) — để ghi nhật ký khi lỗi.</summary>
+    public string LogText { get { lock (logTail) return $"$ {commandLine}\n{string.Join("\n", logTail)}"; } }
+    string commandLine = "";
 
     public async Task StartAsync(CancellationToken ct = default)
     {
@@ -108,6 +114,7 @@ public sealed class ScrcpySession : IDisposable
         // scrcpy-server tự xoá file jar khi chạy (cleanup) → mỗi phiên dùng một bản sao riêng
         var jar = $"/data/local/tmp/controlphone-{scid}.jar";
         var cmd = $"cp {ServerRemote} {jar} && CLASSPATH={jar} app_process / com.genymobile.scrcpy.Server {string.Join(' ', args)}";
+        commandLine = cmd;
         shellSock = await AdbClient.OpenServiceAsync(Addr, "shell:" + cmd, 15000, ct).ConfigureAwait(false);
         _ = Task.Run(ReadShellLog);
 
@@ -133,8 +140,12 @@ public sealed class ScrcpySession : IDisposable
         {
             string tail;
             lock (logTail) tail = string.Join(" | ", logTail.TakeLast(3));
+            bool exited = serverExited;
             Close("không kết nối được video");
-            throw new IOException("Không kết nối được scrcpy" + (tail.Length > 0 ? ": " + tail : ""));
+            if (ct.IsCancellationRequested) throw new OperationCanceledException(ct);
+            // 2 trường hợp khác hẳn nhau khi chẩn đoán: server chết ngay, hay vẫn chạy mà không mở socket
+            throw new IOException((exited ? "scrcpy-server đã thoát trước khi mở kết nối" : "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)")
+                                  + (tail.Length > 0 ? ": " + tail : ""));
         }
         if (!o.Video)
         {
@@ -184,8 +195,10 @@ public sealed class ScrcpySession : IDisposable
             }
         }
         catch { /* đóng */ }
+        serverExited = true;
         Close("server đã thoát");
     }
+    volatile bool serverExited;
 
     static void ReadExact(Stream s, Span<byte> buf)
     {

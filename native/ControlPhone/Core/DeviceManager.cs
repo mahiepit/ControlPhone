@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Windows.Threading;
 using ControlPhone.Adb;
@@ -263,6 +264,7 @@ public sealed class DeviceManager : IDisposable
         d.ActiveAddr = best;
         if (best == null) { d.Status = "offline"; d.Error = "Mất kết nối"; return; }
         d.RestartDelayMs = 1000;
+        d.StartFails = 0; // kết nối mới (cắm lại / đổi USB↔WiFi): thử lại nhanh từ đầu
         EnsureThumb(d);
         if (d.HqRefs > 0) EnsureHq(d);
     }
@@ -325,6 +327,7 @@ public sealed class DeviceManager : IDisposable
                 {
                     if (d.Thumb != sess) return;
                     d.Status = "online"; d.Error = ""; d.RestartDelayMs = 1000;
+                    d.StartFails = 0; d.LastStartError = "";
                     if (!sess.Options.Video) { d.VideoW = d.VideoW == 0 ? sess.Width : d.VideoW; }
                     StartWatch(d);
                     Changed(d);
@@ -336,10 +339,41 @@ public sealed class DeviceManager : IDisposable
             catch (Exception e)
             {
                 ScrcpySession.ForgetPushed(sess.Addr); // lần thử lại sẽ kiểm tra/push lại server
-                await ui.InvokeAsync(() => { if (d.Thumb == sess) { d.Error = e.Message; Changed(d); } });
+                await ui.InvokeAsync(() =>
+                {
+                    if (d.Thumb != sess) return;
+                    d.Error = e.Message;
+                    d.StartFails++;
+                    d.LastStartError = e.Message;
+                    // lỗi lặp lại (vd. server không chạy được trên ROM này): giữ báo lỗi trên ô, thử lại thưa (1 phút/lần)
+                    if (d.StartFails >= 3) d.RestartDelayMs = 60000;
+                    Changed(d);
+                });
+                WriteStartLog(d, sess, e.Message);
                 sess.Dispose();
             }
         });
+    }
+
+    /// <summary>
+    /// Ghi nhật ký khi không khởi động được scrcpy-server: data/logs/scrcpy-&lt;serial&gt;.log (dòng lệnh + đầu ra của server).
+    /// Người dùng gửi kèm tệp này khi báo lỗi.
+    /// </summary>
+    static void WriteStartLog(PhoneDevice d, ScrcpySession sess, string error)
+    {
+        try
+        {
+            var dir = Path.Combine(Store.DataDir, "logs");
+            Directory.CreateDirectory(dir);
+            var name = string.Concat(sess.Addr.Select(c => char.IsLetterOrDigit(c) || c is '.' or '-' ? c : '_'));
+            var file = Path.Combine(dir, $"scrcpy-{name}.log");
+            if (File.Exists(file) && new FileInfo(file).Length > 256 * 1024) File.Delete(file); // giữ tệp nhỏ
+            File.AppendAllText(file,
+                $"===== {DateTime.Now:yyyy-MM-dd HH:mm:ss} · ControlPhone {typeof(DeviceManager).Assembly.GetName().Version?.ToString(3)} · " +
+                $"{d.Manufacturer} {d.Model} · Android {d.Android} (SDK {d.Sdk}) · lần lỗi liên tiếp: {d.StartFails}\n" +
+                $"Lỗi: {error}\n{sess.LogText}\n\n");
+        }
+        catch { /* nhật ký không bắt buộc */ }
     }
 
     void OnThumbEnded(PhoneDevice d, ScrcpySession sess, string reason)
@@ -420,6 +454,7 @@ public sealed class DeviceManager : IDisposable
     {
         StopSessions(d);
         d.RestartDelayMs = 1000;
+        d.StartFails = 0;
         d.HasFrame = false;
         EnsureThumb(d);
         if (d.HqRefs > 0) EnsureHq(d);

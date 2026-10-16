@@ -94,6 +94,8 @@ npm start
 `npm run setup` tải scrcpy v5.0 từ trang phát hành chính thức trên GitHub và kiểm tra mã SHA-256. `ControlPhone.bat` tự làm tất cả các bước này.
 
 ### Trên mỗi điện thoại
+Android 5.0 trở lên (yêu cầu tối thiểu của scrcpy-server 5.0).
+
 1. Bật **Tuỳ chọn nhà phát triển** → **Gỡ lỗi USB**.
 2. Cắm USB và bấm **Cho phép** trên điện thoại.
 
@@ -133,6 +135,7 @@ Máy đứng yên chỉ tốn khoảng 6 kbps.
 ## ❓ Khắc phục sự cố
 
 - **Ô báo "Đang kết nối…" mãi** — chuột phải → Kết nối lại luồng hình, hoặc *Khởi động lại ADB* ở thanh bên.
+- **"Không khởi động được scrcpy trên máy này"** — scrcpy-server lỗi 3 lần liên tiếp trên máy đó; ControlPhone 2 tự thử lại mỗi phút và ghi dòng lệnh + đầu ra của server vào `data\logs\scrcpy-<serial>.log`. Hãy gửi kèm tệp này khi [báo lỗi](https://github.com/mahiepit/ControlPhone/issues).
 - **Màn hình đen** — màn hình điện thoại đang ngủ: bấm *Mở khoá* hoặc *Bật màn hình*.
 - **Gõ phím không vào máy** — trỏ chuột vào máy (hoặc click màn hình lớn) trước; chạm vào ô nhập trên điện thoại.
 - **Kết nối WiFi bị từ chối** — một số ROM chặn ADB qua TCP (hay gặp ở Samsung Android 11+); dùng *Ghép nối mã (Android 11+)*.

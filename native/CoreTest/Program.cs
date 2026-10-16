@@ -92,6 +92,30 @@ if (args.Contains("grid"))
     return fail == 0 ? 0 : 1;
 }
 
+// server không chạy được: báo rõ "đã thoát" + đầu ra của server (dotnet run -c Release -- startfail <serial>)
+// cách thử: phiên đầu push server; xoá server trên máy → phiên sau chép thất bại → server thoát ngay; cuối cùng push lại
+if (args.Contains("startfail"))
+{
+    var serial = args.SkipWhile(a => a != "startfail").Skip(1).FirstOrDefault();
+    if (serial == null) { Console.WriteLine("Cần serial"); return 1; }
+    using (var ok = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = false, PowerOn = false })) await ok.StartAsync();
+    await AdbClient.ShellAsync(serial, "rm -f /data/local/tmp/controlphone-server.jar", 8000);
+    string msg = "", log = "";
+    var bad = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = false, PowerOn = false });
+    var sw2 = System.Diagnostics.Stopwatch.StartNew();
+    try { await bad.StartAsync(); } catch (Exception e) { msg = e.Message; log = bad.LogText; }
+    bad.Dispose();
+    ControlPhone.Scrcpy.ScrcpySession.ForgetPushed(serial);
+    using (var again = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = false, PowerOn = false })) await again.StartAsync(); // push lại
+    var size = (await AdbClient.ShellAsync(serial, "stat -c %s /data/local/tmp/controlphone-server.jar", 8000)).Trim();
+    Console.WriteLine($"Lỗi: {msg}\nNhật ký:\n{log}");
+    Check(msg.StartsWith("scrcpy-server đã thoát") && sw2.Elapsed.TotalSeconds < 10, "Server thoát sớm → báo rõ, không chờ hết 20 giây", $"{sw2.Elapsed.TotalSeconds:0.0}s");
+    Check(log.Contains("app_process") && log.Contains("controlphone-server.jar"), "Nhật ký có dòng lệnh + đầu ra của server");
+    Check(size.Length > 3, "Đã push lại server sau khi thử", size + " byte");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // giữ USB có lưu lượng khi màn hình đứng yên: 1 phiên trên 1 máy, để yên 12 giây (dotnet run -c Release -- keepalive [serial])
 if (args.Contains("keepalive"))
 {

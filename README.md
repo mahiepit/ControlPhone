@@ -94,6 +94,8 @@ npm start
 `npm run setup` downloads scrcpy v5.0 from the official GitHub release and verifies its SHA-256. `ControlPhone.bat` does all of this automatically.
 
 ### On each phone
+Android 5.0 or newer (the minimum of scrcpy-server 5.0).
+
 1. Enable **Developer options** → **USB debugging**.
 2. Plug it in and tap **Allow** on the phone.
 
@@ -133,6 +135,7 @@ Idle phones (static screen) cost about 6 kbps each.
 ## ❓ Troubleshooting
 
 - **Tile stuck on "Connecting…"** — right-click → Reconnect stream, or *Restart ADB* in the sidebar.
+- **"Could not start scrcpy on this phone"** — scrcpy-server failed 3 times in a row on that phone; ControlPhone 2 keeps retrying every minute and writes the server's command line and output to `data\logs\scrcpy-<serial>.log`. Please attach that file when [opening an issue](https://github.com/mahiepit/ControlPhone/issues).
 - **Black screen** — the phone's screen is asleep: use *Unlock* or *Screen on*.
 - **Keyboard input not reaching the phone** — hover the phone (or click the large view) first; tap a text field on the phone.
 - **Wi-Fi connection refused** — some ROMs block ADB over TCP (common on Samsung Android 11+); use *Pairing code (Android 11+)* instead.

@@ -529,4 +529,10 @@ export default {
   "Không cài được bàn phím:": "Impossible d'installer le clavier :",
   "Đã bật lại bàn phím điện thoại:": "Clavier du téléphone rétabli :",
   "config.json rỗng": "config.json est vide",
+  "Không khởi động được scrcpy trên máy này (Android {0})": "Impossible de démarrer scrcpy sur ce téléphone (Android {0})",
+  "Tự thử lại mỗi phút · nhật ký: data\\logs": "Nouvel essai chaque minute · journal : data\\logs",
+  "scrcpy-server đã thoát trước khi mở kết nối": "scrcpy-server s'est arrêté avant d'ouvrir la connexion",
+  "scrcpy-server đã thoát trước khi mở kết nối: {0}": "scrcpy-server s'est arrêté avant d'ouvrir la connexion : {0}",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)": "scrcpy-server n'a pas ouvert la connexion (en cours mais ne répond pas)",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi): {0}": "scrcpy-server n'a pas ouvert la connexion (en cours mais ne répond pas) : {0}",
 };

@@ -74,6 +74,7 @@ public sealed class PhoneDevice : INotifyPropertyChanged
         get
         {
             if (Pending || Status == "offline") return "err";
+            if (Status == "connecting" && StartFails >= 3) return "err"; // lỗi lặp lại: báo rõ, không quay vòng "đang kết nối" mãi
             if ((Zoomed || Paused) && IsOnline) return "soft";
             if (Status == "connecting" || !HasFrame) return "spin";
             return Live ? "" : "pause";
@@ -85,13 +86,18 @@ public sealed class PhoneDevice : INotifyPropertyChanged
         {
             if (Pending) return Status;
             if (Status == "offline") return I18n.T("Mất kết nối");
+            if (Status == "connecting" && StartFails >= 3) return I18n.T("Không khởi động được scrcpy trên máy này (Android {0})", Android);
             if (Zoomed && IsOnline) return I18n.T("Đang xem ở màn hình lớn");
             if (Paused && IsOnline) return I18n.T("Tạm dừng xem");
             if (Status == "connecting" || !HasFrame) return IsOnline && Error == "" ? "" : (Error != "" ? I18n.T(Error) : I18n.T("Đang kết nối…"));
             return "";
         }
     }
-    public string OverlaySub => Pending ? I18n.T(Error) : (Paused && IsOnline && !Zoomed ? I18n.T("Vẫn điều khiển được") : "");
+    public string OverlaySub =>
+        Pending ? I18n.T(Error)
+        : Status == "connecting" && StartFails > 0 && LastStartError != ""
+            ? I18n.T(LastStartError[..Math.Min(220, LastStartError.Length)]) + (StartFails >= 3 ? "\n" + I18n.T("Tự thử lại mỗi phút · nhật ký: data\\logs") : "")
+        : Paused && IsOnline && !Zoomed ? I18n.T("Vẫn điều khiển được") : "";
     public bool ShowOverlay => OverlayKind != "";
     public bool ShowSpinner => OverlayKind == "spin";
 
@@ -104,6 +110,9 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     internal H264Decoder? ThumbDecoder, HqDecoder;
     internal int HqRefs, HqFails;
     internal int RestartDelayMs = 1000;
+    /// <summary>Số lần liên tiếp không khởi động được scrcpy-server + lỗi gần nhất (giữ hiện trên ô trong lúc thử lại).</summary>
+    internal int StartFails;
+    internal string LastStartError = "";
     internal CancellationTokenSource? RestartCts;
     internal int InfoBusy, ProbeFails;
     internal bool Visible = true;      // ô đang nằm trong vùng nhìn thấy (ngoài vùng: không giải mã)

@@ -529,4 +529,10 @@ export default {
   "Không cài được bàn phím:": "无法安装键盘：",
   "Đã bật lại bàn phím điện thoại:": "已恢复手机键盘：",
   "config.json rỗng": "config.json 为空",
+  "Không khởi động được scrcpy trên máy này (Android {0})": "无法在此手机上启动 scrcpy (Android {0})",
+  "Tự thử lại mỗi phút · nhật ký: data\\logs": "每分钟自动重试 · 日志：data\\logs",
+  "scrcpy-server đã thoát trước khi mở kết nối": "scrcpy-server 在建立连接前已退出",
+  "scrcpy-server đã thoát trước khi mở kết nối: {0}": "scrcpy-server 在建立连接前已退出：{0}",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)": "scrcpy-server 未打开连接（仍在运行但无响应）",
+  "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi): {0}": "scrcpy-server 未打开连接（仍在运行但无响应）：{0}",
 };
