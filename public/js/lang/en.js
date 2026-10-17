@@ -535,4 +535,10 @@ export default {
   "scrcpy-server đã thoát trước khi mở kết nối: {0}": "scrcpy-server exited before opening the connection: {0}",
   "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)": "scrcpy-server did not open the connection (running but not responding)",
   "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi): {0}": "scrcpy-server did not open the connection (running but not responding): {0}",
+  "Có {0} máy đang bị một adb server khác giữ (cổng {1}, mở lúc {2}). Mỗi máy chỉ kết nối được với 1 adb server nên ControlPhone không thấy các máy này.": "{0} phones are held by another adb server (port {1}, started {2}). A phone can only be connected to one adb server, so ControlPhone cannot see them.",
+  "Giải phóng để ControlPhone nhận đủ máy? Chương trình đang dùng adb server đó (nếu có) sẽ mất kết nối tới các máy này.": "Release them so ControlPhone gets all phones? The program using that adb server (if any) will lose these phones.",
+  "Có máy bị chương trình khác giữ": "Phones held by another program",
+  "Giải phóng": "Release",
+  "Đã giải phóng {0} máy — ControlPhone sẽ nhận trong vài giây": "Released {0} phones — ControlPhone will pick them up in a few seconds",
+  "Không tắt được adb server ở cổng {0}": "Could not stop the adb server on port {0}",
 };

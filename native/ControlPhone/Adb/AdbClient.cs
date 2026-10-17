@@ -269,6 +269,65 @@ public static class AdbClient
         return "adb keeps restarting - left running";
     }
 
+    // ---------- adb server khác ----------
+    public sealed record OtherServer(int Port, int Pid, DateTime Started, List<string> Serials);
+
+    /// <summary>
+    /// Các adb server KHÁC (chạy ở cổng khác 5037, do chương trình khác mở) đang giữ điện thoại. Mỗi máy USB chỉ thuộc về
+    /// 1 adb server: server nào nhận máy trước thì giữ, nên các máy đó không bao giờ hiện trong ControlPhone.
+    /// </summary>
+    public static async Task<List<OtherServer>> FindOtherServersAsync()
+    {
+        var res = new List<OtherServer>();
+        var rows = await Task.Run(NetstatTcp).ConfigureAwait(false);
+        foreach (var f in rows.Where(f => f[3] == "LISTENING" && f[1].StartsWith("127.0.0.1:")).DistinctBy(f => f[1]))
+        {
+            if (!int.TryParse(f[1][(f[1].LastIndexOf(':') + 1)..], out var port) || port == Port || !int.TryParse(f[4], out var pid)) continue;
+            DateTime started;
+            try { using var pr = Process.GetProcessById(pid); if (!pr.ProcessName.Equals("adb", StringComparison.OrdinalIgnoreCase)) continue; started = pr.StartTime; }
+            catch { continue; }
+            try
+            {
+                var list = await HostQueryAsync(port, "host:devices", 3000).ConfigureAwait(false);
+                var serials = list.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Select(l => l.Split('\t')[0]).ToList();
+                if (serials.Count > 0) res.Add(new OtherServer(port, pid, started, serials));
+            }
+            catch { /* không phải adb server / không trả lời */ }
+        }
+        return res;
+    }
+
+    /// <summary>Tắt một adb server khác (host:kill) để trả các máy nó đang giữ về cho adb server của ControlPhone.</summary>
+    public static async Task<bool> KillServerOnPortAsync(int port)
+    {
+        if (port == Port) return false;
+        try { await HostQueryAsync(port, "host:kill", 3000).ConfigureAwait(false); } catch { /* server tắt ngay sau OKAY */ }
+        for (int i = 0; i < 10; i++)
+        {
+            await Task.Delay(300).ConfigureAwait(false);
+            try { await HostQueryAsync(port, "host:version", 1000).ConfigureAwait(false); } catch { return true; }
+        }
+        return false;
+    }
+
+    /// <summary>Lệnh host:* tới một adb server ở cổng bất kỳ; trả về nội dung (rỗng với host:kill).</summary>
+    static async Task<string> HostQueryAsync(int port, string cmd, int timeoutMs)
+    {
+        using var cts = new CancellationTokenSource(timeoutMs);
+        using var sock = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        await sock.ConnectAsync("127.0.0.1", port, cts.Token).ConfigureAwait(false);
+        using var s = new NetworkStream(sock, ownsSocket: false);
+        await s.WriteAsync(Encode(cmd), cts.Token).ConfigureAwait(false);
+        await ExpectOkayAsync(s, cts.Token).ConfigureAwait(false);
+        if (cmd == "host:kill") return "";
+        var head = new byte[4];
+        await ReadExactAsync(s, head, 4, cts.Token).ConfigureAwait(false);
+        int len = Convert.ToInt32(Encoding.ASCII.GetString(head), 16);
+        var body = new byte[len];
+        if (len > 0) await ReadExactAsync(s, body, len, cts.Token).ConfigureAwait(false);
+        return Encoding.UTF8.GetString(body);
+    }
+
     /// <summary>
     /// Theo dõi danh sách thiết bị theo thời gian thực (host:track-devices-l). Tự kết nối lại / bật adb server.
     /// Nhiều máy trùng serial (ROM nhân bản) → địa chỉ "serial@t&lt;id&gt;".

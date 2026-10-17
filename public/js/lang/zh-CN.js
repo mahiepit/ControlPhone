@@ -535,4 +535,10 @@ export default {
   "scrcpy-server đã thoát trước khi mở kết nối: {0}": "scrcpy-server 在建立连接前已退出：{0}",
   "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi)": "scrcpy-server 未打开连接（仍在运行但无响应）",
   "scrcpy-server không mở kết nối (vẫn chạy nhưng không phản hồi): {0}": "scrcpy-server 未打开连接（仍在运行但无响应）：{0}",
+  "Có {0} máy đang bị một adb server khác giữ (cổng {1}, mở lúc {2}). Mỗi máy chỉ kết nối được với 1 adb server nên ControlPhone không thấy các máy này.": "有 {0} 台手机被另一个 adb 服务器占用（端口 {1}，启动于 {2}）。一台手机只能连接一个 adb 服务器，因此 ControlPhone 看不到这些手机。",
+  "Giải phóng để ControlPhone nhận đủ máy? Chương trình đang dùng adb server đó (nếu có) sẽ mất kết nối tới các máy này.": "释放这些手机让 ControlPhone 接管？正在使用该 adb 服务器的程序（如有）将失去这些手机的连接。",
+  "Có máy bị chương trình khác giữ": "手机被其他程序占用",
+  "Giải phóng": "释放",
+  "Đã giải phóng {0} máy — ControlPhone sẽ nhận trong vài giây": "已释放 {0} 台手机 — ControlPhone 将在几秒内接管",
+  "Không tắt được adb server ở cổng {0}": "无法停止端口 {0} 上的 adb 服务器",
 };

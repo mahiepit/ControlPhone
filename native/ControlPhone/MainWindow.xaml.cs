@@ -29,6 +29,10 @@ public partial class MainWindow : Window
     readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     readonly DispatcherTimer tickTimer = new() { Interval = TimeSpan.FromMilliseconds(500) };
+    // adb server khác (chương trình khác mở ở cổng khác) đang giữ điện thoại → hỏi giải phóng (1 lần / server)
+    readonly DispatcherTimer otherAdbTimer = new(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(20) };
+    readonly HashSet<int> otherAdbAsked = [];
+    bool otherAdbBusy;
     // chép khung hình mới (~33 lần/giây; ~66 lần khi mở màn hình lớn). KHÔNG dùng CompositionTarget.Rendering:
     // nó bắt WPF vẽ lại cả cửa sổ theo tần số màn hình mãi mãi; với hẹn giờ, WPF chỉ vẽ khi có ảnh thật sự đổi.
     readonly DispatcherTimer frameTimer = new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(30) };
@@ -77,6 +81,12 @@ public partial class MainWindow : Window
             statsTimer.Start();
             tickTimer.Start();
             frameTimer.Start();
+            if (!SelfTest.On)
+            {
+                otherAdbTimer.Tick += async (_, _) => await CheckOtherAdbAsync();
+                otherAdbTimer.Start();
+                _ = Task.Delay(6000).ContinueWith(_ => Dispatcher.BeginInvoke(async () => await CheckOtherAdbAsync()));
+            }
             RenderAll();
             if (SelfTest.On) _ = RunSelfTest();
         };
@@ -447,6 +457,31 @@ public partial class MainWindow : Window
         if (addr == "") { Ui.Toast("Nhập địa chỉ IP (vd 192.168.1.10:5555)", "err"); return; }
         var r = await actions.ConnectAsync(addr);
         Ui.Toast(r.Msg != "" ? r.Msg : r.Ok ? "Đã kết nối" : "Lỗi", r.Ok ? "ok" : "err", 5000);
+    }
+
+    /// <summary>
+    /// Mỗi máy USB chỉ thuộc về 1 adb server. Chương trình khác chạy adb server riêng (cổng khác 5037) sẽ "giữ" một phần
+    /// máy và ControlPhone không thấy chúng (vd. 40 máy cắm mà chỉ hiện 23). Phát hiện → hỏi người dùng có giải phóng không.
+    /// </summary>
+    async Task CheckOtherAdbAsync()
+    {
+        if (otherAdbBusy || !IsVisible) return;
+        otherAdbBusy = true;
+        try
+        {
+            var others = await AdbClient.FindOtherServersAsync();
+            foreach (var o in others)
+            {
+                if (!otherAdbAsked.Add(o.Pid)) continue; // mỗi server chỉ hỏi 1 lần
+                var msg = T("Có {0} máy đang bị một adb server khác giữ (cổng {1}, mở lúc {2}). Mỗi máy chỉ kết nối được với 1 adb server nên ControlPhone không thấy các máy này.", o.Serials.Count, o.Port, o.Started.ToString("HH:mm dd/MM"))
+                          + "\n\n" + T("Giải phóng để ControlPhone nhận đủ máy? Chương trình đang dùng adb server đó (nếu có) sẽ mất kết nối tới các máy này.");
+                if (!Ui.Confirm(T("Có máy bị chương trình khác giữ"), msg, T("Giải phóng"))) continue;
+                bool ok = await AdbClient.KillServerOnPortAsync(o.Port);
+                Ui.Toast(ok ? T("Đã giải phóng {0} máy — ControlPhone sẽ nhận trong vài giây", o.Serials.Count) : T("Không tắt được adb server ở cổng {0}", o.Port), ok ? "ok" : "err", 6000);
+            }
+        }
+        catch { /* chỉ là kiểm tra phụ */ }
+        finally { otherAdbBusy = false; }
     }
 
     async void AdbRestart()

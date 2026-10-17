@@ -92,6 +92,16 @@ if (args.Contains("grid"))
     return fail == 0 ? 0 : 1;
 }
 
+// adb server khác đang giữ máy (chỉ đọc, không tắt gì): dotnet run -c Release -- otheradb
+if (args.Contains("otheradb"))
+{
+    var others = await AdbClient.FindOtherServersAsync();
+    foreach (var o in others) Console.WriteLine($"cổng {o.Port} · PID {o.Pid} · mở {o.Started:HH:mm:ss} · {o.Serials.Count} máy: {string.Join(", ", o.Serials.Take(5))}…");
+    Check(true, "Dò adb server khác", $"{others.Count} server, {others.Sum(o => o.Serials.Count)} máy bị giữ");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // server không chạy được: báo rõ "đã thoát" + đầu ra của server (dotnet run -c Release -- startfail <serial>)
 // cách thử: phiên đầu push server; xoá server trên máy → phiên sau chép thất bại → server thoát ngay; cuối cùng push lại
 if (args.Contains("startfail"))
