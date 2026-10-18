@@ -92,6 +92,30 @@ if (args.Contains("grid"))
     return fail == 0 ? 0 : 1;
 }
 
+// định danh theo serial USB + chuyển mục cũ (không kết nối máy): dotnet run -c Release -- identity <phones.json>
+// phones.json: [{Usb, SerialNo, Aid}] đọc từ máy thật; chạy trên BẢN SAO cấu hình
+if (args.Contains("identity"))
+{
+    var file = args.SkipWhile(a => a != "identity").Skip(1).FirstOrDefault();
+    var phones = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(File.ReadAllText(file!))!;
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    int cfgBefore = Ui(() => Store.State.Devices.Count);
+    var mgr2 = Ui(() => new DeviceManager(ui!));
+    var resolve = typeof(DeviceManager).GetMethod("ResolveId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+    var result = Ui(() => phones.Select(p => (p["Usb"], Id: (string)resolve.Invoke(mgr2, [p["SerialNo"], p["Aid"], "usb", p["Usb"]])!)).ToList());
+    var nums = Ui(() => result.Select(r => (r.Item1, r.Id, Store.Meta(r.Id).Num)).ToList());
+    foreach (var (usb, id, num) in nums.OrderBy(x => x.Num)) Console.WriteLine($"  #{num:00}  {usb}  → {id}");
+    Check(nums.All(x => x.Id == x.Item1), "Mỗi máy định danh bằng serial USB");
+    Check(nums.Select(x => x.Num).Distinct().Count() == nums.Count, "Không trùng số thứ tự", $"{nums.Count} máy");
+    // lần 2 (Android ID đổi, vd. cập nhật ROM): vẫn đúng máy, đúng số
+    var again = Ui(() => phones.Select(p => (string)resolve.Invoke(mgr2, [p["SerialNo"], "ffff" + p["Aid"], "usb", p["Usb"]])!).ToList());
+    Check(Ui(() => again.Select(id => Store.Meta(id).Num).SequenceEqual(nums.Select(x => x.Num))), "Đổi Android ID (cập nhật Android) không đổi số thứ tự");
+    int cfgAfter = Ui(() => Store.State.Devices.Count);
+    Console.WriteLine($"Mục trong cấu hình: {cfgBefore} → {cfgAfter}");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // adb server khác đang giữ máy (chỉ đọc, không tắt gì): dotnet run -c Release -- otheradb
 if (args.Contains("otheradb"))
 {

@@ -44,6 +44,8 @@ public sealed class DeviceManager : IDisposable
 
     public void Start()
     {
+        // danh sách "serial bị trùng" của bản ≤ 2.0.7 không còn dùng (định danh giờ là serial USB)
+        if (Store.State.DupSerials.Count > 0) { Store.State.DupSerials.Clear(); Store.Save(); }
         _ = Task.Run(async () =>
         {
             await AdbClient.StartServerAsync();
@@ -192,48 +194,65 @@ public sealed class DeviceManager : IDisposable
     }
 
     /// <summary>
-    /// Định danh ổn định: thường là ro.serialno (gộp USB + WiFi của cùng máy). Nhiều máy chạy ROM nhân bản
-    /// có CÙNG serial → phân biệt thêm bằng Android ID ("serial#androidId").
+    /// Định danh ổn định của máy = SERIAL USB mà adb thấy (do bootloader / phần cứng cấp — giống Xiaowei). Nó KHÔNG đổi khi
+    /// cập nhật Android, cài ROM mới hay khôi phục cài đặt gốc. Trước đây (≤ 2.0.7) dùng ro.serialno + Android ID: ROM nhân
+    /// bản cho nhiều máy CÙNG ro.serialno, còn Android ID đổi sau mỗi lần cài ROM → máy bị coi là máy khác, mất số thứ tự.
+    /// Máy qua WiFi (serial là ip:port) được gắn vào máy USB đã biết nhờ địa chỉ WiFi đã nhớ hoặc ro.serialno + Android ID.
     /// </summary>
     string ResolveId(string serialno, string aid, string type, string addr)
     {
-        var dup = Store.State.DupSerials;
         serialno = serialno.Trim();
-        if (serialno is "" or "unknown") return aid != "" ? "aid:" + aid : addr;
-        string Keyed(string a) => $"{serialno}#{(a != "" ? a : addr)[..Math.Min(12, (a != "" ? a : addr).Length)]}";
-        if (dup.Contains(serialno)) return Keyed(aid);
-        byId.TryGetValue(serialno, out var live);
-        Store.State.Devices.TryGetValue(serialno, out var meta);
-        var otherAid = live?.AndroidId is { Length: > 0 } la ? la : meta?.AndroidId ?? "";
-        if (aid != "" && otherAid != "" && otherAid != aid)
+        if (serialno == "unknown") serialno = "";
+        var aid12 = aid[..Math.Min(12, aid.Length)];
+        var all = Store.State.Devices;
+        if (type == "usb")
         {
-            // 2 máy khác nhau trùng serial → từ nay mỗi máy dùng id riêng (giữ tên/số của máy cũ)
-            dup.Add(serialno);
-            Store.Save();
-            Rekey(serialno, Keyed(otherAid));
-            Log?.Invoke($"Phát hiện nhiều máy trùng serial {serialno} — đã tách riêng từng máy", true);
-            return Keyed(aid);
+            var (usb, tid) = AdbClient.SplitAddr(addr);
+            // 2 kết nối USB trùng cả serial USB (máy nhân bản ở mức phần cứng — hiếm) → phân biệt thêm bằng Android ID
+            var id = tid == null ? usb : $"{usb}#{(aid12 != "" ? aid12 : "t" + tid)}";
+            MigrateOldEntries(id, usb, serialno, aid, aid12);
+            var m = Store.Meta(id);
+            if (serialno != "" && m.SerialNo != serialno) { m.SerialNo = serialno; Store.Save(); }
+            return id;
         }
-        // ROM nhân bản hoàn toàn (trùng cả Android ID) mà đang có 2 kết nối USB cùng lúc → vẫn tách ra
-        if (live != null && type == "usb" && live.HasUsb && !live.Transports.ContainsKey(addr)) return $"{serialno}~{addr}";
-        return serialno;
+        // WiFi: địa chỉ đã nhớ của đúng máy này (Android ID khớp) → máy đó
+        foreach (var (k, m) in all)
+            if (m.Wifi == addr && (aid == "" || string.IsNullOrEmpty(m.AndroidId) || m.AndroidId == aid)) return k;
+        // cùng ro.serialno + Android ID với một máy đã biết (vd. vừa chuyển USB → WiFi)
+        if (serialno != "" && aid != "")
+            foreach (var (k, m) in all)
+                if (m.SerialNo == serialno && m.AndroidId == aid) return k;
+        return serialno != "" ? $"wifi:{serialno}#{aid12}" : "wifi:" + addr;
     }
 
-    void Rekey(string oldId, string newId)
+    /// <summary>
+    /// Chuyển mục cũ (bản ≤ 2.0.7 đặt theo ro.serialno / "serial#androidId" / "aid:…") của CHÍNH máy này sang định danh
+    /// serial USB, giữ số thứ tự / tên / nhóm. Có nhiều mục cũ (máy từng bị tách nhầm) → giữ mục có số nhỏ nhất, bỏ mục thừa.
+    /// </summary>
+    void MigrateOldEntries(string id, string usb, string serialno, string aid, string aid12)
     {
         var all = Store.State.Devices;
-        if (all.Remove(oldId, out var m) && !all.ContainsKey(newId)) all[newId] = m;
-        if (Store.State.Solo != null) Store.State.Solo = Store.State.Solo.Select(x => x == oldId ? newId : x).ToList();
-        if (byId.Remove(oldId, out var d))
+        bool Mine(string k, DeviceMeta m) => k != id && !byId.ContainsKey(k) && (
+            k.StartsWith(usb + "#", StringComparison.Ordinal) || k.StartsWith(usb + "~", StringComparison.Ordinal)
+            || (serialno != "" && aid12 != "" && k == $"{serialno}#{aid12}")
+            || (serialno != "" && k == serialno && serialno != usb && (string.IsNullOrEmpty(m.AndroidId) || m.AndroidId == aid))
+            || (aid != "" && k == "aid:" + aid));
+        var old = all.Where(kv => Mine(kv.Key, kv.Value)).ToList();
+        if (old.Count == 0) return;
+        if (!all.ContainsKey(id))
         {
-            d.Id = newId;
-            byId[newId] = d;
-            foreach (var s in d.Transports.Keys) serialToId[s] = newId;
-            Changed(d);
+            var keep = old.OrderBy(kv => kv.Value.Num > 0 ? kv.Value.Num : int.MaxValue).First().Value;
+            if (keep.Label == "") keep.Label = old.Select(kv => kv.Value.Label).FirstOrDefault(l => l != "") ?? "";
+            keep.KeyPushed |= old.Any(kv => kv.Value.KeyPushed);
+            all[id] = keep;
+        }
+        foreach (var (k, _) in old)
+        {
+            all.Remove(k);
+            if (Store.State.Solo != null) Store.State.Solo = Store.State.Solo.Select(x => x == k ? id : x).Distinct().ToList();
         }
         Store.Save();
     }
-
     void RememberWifi(string hwId, string addr)
     {
         Store.Meta(hwId).Wifi = addr;

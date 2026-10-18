@@ -34,6 +34,8 @@ public sealed class DeviceMeta
     public int Num { get; set; }
     public List<string> Groups { get; set; } = [];
     public string? AndroidId { get; set; }
+    /// <summary>ro.serialno lúc kết nối USB gần nhất (để nhận ra chính máy này khi nó kết nối qua WiFi).</summary>
+    public string? SerialNo { get; set; }
     public string? Wifi { get; set; }
     public bool Paused { get; set; }
     public bool KeyPushed { get; set; }

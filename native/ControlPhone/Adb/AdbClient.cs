@@ -34,6 +34,9 @@ public static class AdbClient
         return File.Exists(bundled) ? bundled : "adb.exe";
     }
 
+    /// <summary>"serial@t&lt;id&gt;" → (serial, id); địa chỉ thường → (serial, null).</summary>
+    public static (string Serial, string? Tid) SplitAddr(string addr) => ParseAddr(addr);
+
     static (string serial, string? tid) ParseAddr(string addr)
     {
         var i = addr.LastIndexOf("@t", StringComparison.Ordinal);
