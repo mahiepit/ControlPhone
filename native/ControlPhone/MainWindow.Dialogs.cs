@@ -448,7 +448,7 @@ public partial class MainWindow
         var screenOff = d.AddCheck("Tự tắt màn hình điện thoại khi kết nối (vẫn xem & điều khiển được, tiết kiệm pin — thoát app màn hình tự bật lại)", s.ScreenOffOnConnect);
         var powerOn = d.AddCheck("Đánh thức điện thoại khi kết nối", s.PowerOnConnect);
         var autoWifi = d.AddCheck("Tự kết nối lại các máy WiFi đã từng kết nối", s.AutoReconnectWifi);
-        var stopAdb = d.AddCheck("Tắt ADB khi thoát ControlPhone (bỏ chọn nếu công cụ khác cũng dùng ADB, ví dụ script tự động)", s.StopAdbOnExit);
+        var stopAdb = d.AddCheck("Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)", s.KillAdbOnExit);
         var autoKey = d.AddCheck("ROOT: tự cấy khoá uỷ quyền khi máy kết nối (khỏi hỏi \"Cho phép gỡ lỗi USB\")", s.AutoPersistKey);
         d.AddNote(string.Join("\n", new[]
         {
@@ -476,7 +476,7 @@ public partial class MainWindow
             s.MaxParallelStart = I(mps, 6, 1, 30); s.MaxParallelJobs = I(mpj, 10, 1, 50);
             s.ScreenshotDir = shotDir.Text.Trim() != "" ? shotDir.Text.Trim() : s.ScreenshotDir;
             s.ScreenOffOnConnect = screenOff.IsChecked == true; s.PowerOnConnect = powerOn.IsChecked == true;
-            s.AutoReconnectWifi = autoWifi.IsChecked == true; s.StopAdbOnExit = stopAdb.IsChecked == true; s.AutoPersistKey = autoKey.IsChecked == true;
+            s.AutoReconnectWifi = autoWifi.IsChecked == true; s.KillAdbOnExit = stopAdb.IsChecked == true; s.AutoPersistKey = autoKey.IsChecked == true;
             Store.Save();
             manager.ResetStartLimiter();
             if (before != (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect)) manager.RestartAll();

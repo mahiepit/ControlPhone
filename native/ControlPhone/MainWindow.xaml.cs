@@ -605,13 +605,16 @@ public partial class MainWindow : Window
         frameTimer.Stop();
         if (viewerId != null && manager.Get(viewerId) is { } vd) manager.ReleaseHq(vd);
         manager.Dispose();
-        await Task.Delay(1500); // để điện thoại kịp dọn (bật lại màn hình thật…) trước khi cắt adb
-        bool scrcpyOpen;
-        lock (actions.ScrcpyChildren) scrcpyOpen = actions.ScrcpyChildren.Any(p => !p.HasExited);
-        if (Store.Settings.StopAdbOnExit && !scrcpyOpen && !SelfTest.On)
+        // mặc định GIỮ adb server chạy khi thoát: chương trình khác (script, Xiaowei…) đang dùng các kết nối đó.
+        // Chỉ tắt khi người dùng bật hẳn trong Cài đặt (và không có cửa sổ scrcpy / chương trình nào khác đang dùng adb).
+        if (Store.Settings.KillAdbOnExit && !SelfTest.On)
         {
-            try { await Task.WhenAny(AdbClient.StopServerIfUnusedAsync(), Task.Delay(6000)); } catch { }
+            await Task.Delay(1500); // để điện thoại kịp dọn (bật lại màn hình thật…) trước khi cắt adb
+            bool scrcpyOpen;
+            lock (actions.ScrcpyChildren) scrcpyOpen = actions.ScrcpyChildren.Any(p => !p.HasExited);
+            if (!scrcpyOpen) try { await Task.WhenAny(AdbClient.StopServerIfUnusedAsync(), Task.Delay(6000)); } catch { }
         }
+        else await Task.Delay(800); // vẫn để phiên scrcpy trên máy kịp đóng gọn (bật lại màn hình thật)
         closingDone = true;
         Close();
     }

@@ -17,7 +17,11 @@ public sealed class Settings
     public bool ScreenOffOnConnect { get; set; } = true;
     public string PreferTransport { get; set; } = "usb";
     public bool AutoReconnectWifi { get; set; } = true;
-    public bool StopAdbOnExit { get; set; } = true;
+    /// <summary>
+    /// Tắt adb server khi thoát. MẶC ĐỊNH KHÔNG: các chương trình khác (script tự động, Xiaowei…) vẫn đang dùng adb.
+    /// Khoá JSON mới ("killAdbOnExit"): giá trị cũ "stopAdbOnExit" (mặc định bật ở bản ≤ 2.0.9) không còn được dùng.
+    /// </summary>
+    public bool KillAdbOnExit { get; set; }
     public bool AutoPersistKey { get; set; } = true;
     public int MaxParallelStart { get; set; } = 6;
     public int MaxParallelJobs { get; set; } = 10;

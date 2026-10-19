@@ -549,4 +549,5 @@ export default {
   "Nhập & khởi động lại": "匯入並重新啟動",
   "Không nhập được dữ liệu: {0}": "無法匯入資料：{0}",
   "Đây chính là thư mục dữ liệu đang dùng": "這就是目前使用的資料夾",
+  "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "結束 ControlPhone 時關閉 ADB（預設關閉：adb 繼續為使用手機的其他程式執行）",
 };

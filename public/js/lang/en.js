@@ -549,4 +549,5 @@ export default {
   "Nhập & khởi động lại": "Import & restart",
   "Không nhập được dữ liệu: {0}": "Could not import the data: {0}",
   "Đây chính là thư mục dữ liệu đang dùng": "This is the data folder already in use",
+  "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "Stop ADB when ControlPhone exits (off by default: adb keeps running for other programs using the phones)",
 };
