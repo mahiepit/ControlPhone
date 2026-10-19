@@ -541,4 +541,12 @@ export default {
   "Giải phóng": "Freigeben",
   "Đã giải phóng {0} máy — ControlPhone sẽ nhận trong vài giây": "{0} Telefone freigegeben — ControlPhone übernimmt sie in wenigen Sekunden",
   "Không tắt được adb server ở cổng {0}": "adb-Server auf Port {0} konnte nicht beendet werden",
+  "Thư mục dữ liệu (số thứ tự, tên, nhóm máy)": "Datenordner (Nummern, Namen, Gruppen)",
+  "Nhập dữ liệu từ bản cũ…": "Daten aus älterer Version importieren…",
+  "Nhập dữ liệu từ bản cũ": "Daten aus älterer Version importieren",
+  "Chọn tệp config.json khác…": "Andere config.json wählen…",
+  "Dùng dữ liệu (số thứ tự, tên, nhóm, cài đặt) trong:\n{0}\n\nDữ liệu hiện tại được sao lưu (.before-import-…). ControlPhone sẽ khởi động lại.": "Daten (Nummern, Namen, Gruppen, Einstellungen) verwenden aus:\n{0}\n\nDie aktuellen Daten werden gesichert (.before-import-…). ControlPhone startet neu.",
+  "Nhập & khởi động lại": "Importieren & neu starten",
+  "Không nhập được dữ liệu: {0}": "Daten konnten nicht importiert werden: {0}",
+  "Đây chính là thư mục dữ liệu đang dùng": "Das ist der bereits verwendete Datenordner",
 };

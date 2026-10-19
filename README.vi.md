@@ -136,6 +136,7 @@ Máy đứng yên chỉ tốn khoảng 6 kbps.
 
 - **Ô báo "Đang kết nối…" mãi** — chuột phải → Kết nối lại luồng hình, hoặc *Khởi động lại ADB* ở thanh bên.
 - **"Không khởi động được scrcpy trên máy này"** — scrcpy-server lỗi 3 lần liên tiếp trên máy đó; ControlPhone 2 tự thử lại mỗi phút và ghi dòng lệnh + đầu ra của server vào `data\logs\scrcpy-<serial>.log`. Hãy gửi kèm tệp này khi [báo lỗi](https://github.com/mahiepit/ControlPhone/issues).
+- **Mất số thứ tự / tên máy sau khi cập nhật ControlPhone** — bản mới được giải nén ra thư mục mới, không có thư mục `data` cũ. Từ 2.0.9, lần chạy đầu app tự hỏi để mang dữ liệu cũ sang; hoặc làm bất cứ lúc nào ở Cài đặt → *Nhập dữ liệu từ bản cũ…*.
 - **Màn hình đen** — màn hình điện thoại đang ngủ: bấm *Mở khoá* hoặc *Bật màn hình*.
 - **Gõ phím không vào máy** — trỏ chuột vào máy (hoặc click màn hình lớn) trước; chạm vào ô nhập trên điện thoại.
 - **Kết nối WiFi bị từ chối** — một số ROM chặn ADB qua TCP (hay gặp ở Samsung Android 11+); dùng *Ghép nối mã (Android 11+)*.

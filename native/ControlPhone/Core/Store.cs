@@ -105,7 +105,11 @@ public static class Store
 
     /// <summary>Lỗi đọc cấu hình (tệp hỏng): khi có lỗi, KHÔNG bao giờ ghi đè config.json.</summary>
     public static string? LoadError { get; private set; }
-    static bool saveBlocked, sessionBackupDone;
+    static bool saveBlocked, uiBlocked, sessionBackupDone;
+    public static string ConfigPath => File;
+
+    /// <summary>Ngừng ghi (vd. vừa nhập dữ liệu bản cũ và sắp khởi động lại): không ghi đè tệp vừa chép vào.</summary>
+    public static void SuspendSaving() { saveBlocked = true; uiBlocked = true; }
 
     /// <summary>Đọc tệp, thử lại khi đang bị chương trình khác ghi (khoá tạm thời).</summary>
     static string? ReadWithRetry(string file)
@@ -194,6 +198,7 @@ public static class Store
 
     public static void FlushUi()
     {
+        if (uiBlocked) return;
         string json;
         lock (gate) json = JsonSerializer.Serialize(Ui, Json);
         WriteAtomic(UiFile, json);

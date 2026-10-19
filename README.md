@@ -136,6 +136,7 @@ Idle phones (static screen) cost about 6 kbps each.
 
 - **Tile stuck on "Connecting…"** — right-click → Reconnect stream, or *Restart ADB* in the sidebar.
 - **"Could not start scrcpy on this phone"** — scrcpy-server failed 3 times in a row on that phone; ControlPhone 2 keeps retrying every minute and writes the server's command line and output to `data\logs\scrcpy-<serial>.log`. Please attach that file when [opening an issue](https://github.com/mahiepit/ControlPhone/issues).
+- **Phone numbers / names lost after updating ControlPhone** — the new version was extracted into a new folder without your `data`. ControlPhone 2.0.9+ offers to bring the old data over on first start; you can also do it any time in Settings → *Import data from an older version…*.
 - **Black screen** — the phone's screen is asleep: use *Unlock* or *Screen on*.
 - **Keyboard input not reaching the phone** — hover the phone (or click the large view) first; tap a text field on the phone.
 - **Wi-Fi connection refused** — some ROMs block ADB over TCP (common on Samsung Android 11+); use *Pairing code (Android 11+)* instead.

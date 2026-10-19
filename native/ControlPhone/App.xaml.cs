@@ -34,11 +34,34 @@ public partial class App : Application
             MessageBox.Show(ex.Exception.Message, "ControlPhone", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
         };
+        OfferPreviousData();
         Store.Load();
         I18n.Init(Store.Ui.Lang);
         Theme.Apply(Store.Ui.Theme);
         base.OnStartup(e);
         new MainWindow().Show();
+    }
+
+    /// <summary>
+    /// Lần đầu chạy bản mới ở thư mục mới (chưa có data): tìm dữ liệu của bản cũ và hỏi có dùng không — để không mất
+    /// số thứ tự / tên / nhóm khi cập nhật bằng cách giải nén ra thư mục khác.
+    /// </summary>
+    static void OfferPreviousData()
+    {
+        if (SelfTest.On || Environment.GetEnvironmentVariable("CP_DATA_DIR") != null || System.IO.File.Exists(Store.ConfigPath)) return;
+        try
+        {
+            foreach (var c in DataImport.FindPrevious().Take(3))
+            {
+                var r = MessageBox.Show(
+                    $"Tìm thấy dữ liệu của ControlPhone bản cũ:\n{c.Dir}\n{c.Phones} máy · sửa lần cuối {c.Modified:dd/MM/yyyy HH:mm}\n\n" +
+                    "Dùng dữ liệu này cho bản mới (giữ số thứ tự, tên, nhóm, cài đặt)?\n\n" +
+                    "Found data from an older ControlPhone (above). Use it for this version (keeps phone numbers, names, groups, settings)?",
+                    "ControlPhone", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                if (r == MessageBoxResult.Yes) { DataImport.Import(c.Dir); return; }
+            }
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message, "ControlPhone", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     protected override void OnExit(ExitEventArgs e)

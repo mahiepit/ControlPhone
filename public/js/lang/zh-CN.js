@@ -541,4 +541,12 @@ export default {
   "Giải phóng": "释放",
   "Đã giải phóng {0} máy — ControlPhone sẽ nhận trong vài giây": "已释放 {0} 台手机 — ControlPhone 将在几秒内接管",
   "Không tắt được adb server ở cổng {0}": "无法停止端口 {0} 上的 adb 服务器",
+  "Thư mục dữ liệu (số thứ tự, tên, nhóm máy)": "数据文件夹（编号、名称、分组）",
+  "Nhập dữ liệu từ bản cũ…": "从旧版本导入数据…",
+  "Nhập dữ liệu từ bản cũ": "从旧版本导入数据",
+  "Chọn tệp config.json khác…": "选择其他 config.json…",
+  "Dùng dữ liệu (số thứ tự, tên, nhóm, cài đặt) trong:\n{0}\n\nDữ liệu hiện tại được sao lưu (.before-import-…). ControlPhone sẽ khởi động lại.": "使用以下位置的数据（编号、名称、分组、设置）：\n{0}\n\n当前数据会被备份（.before-import-…）。ControlPhone 将重新启动。",
+  "Nhập & khởi động lại": "导入并重启",
+  "Không nhập được dữ liệu: {0}": "无法导入数据：{0}",
+  "Đây chính là thư mục dữ liệu đang dùng": "这就是当前使用的数据文件夹",
 };

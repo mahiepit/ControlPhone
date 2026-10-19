@@ -92,6 +92,47 @@ if (args.Contains("grid"))
     return fail == 0 ? 0 : 1;
 }
 
+// cập nhật bằng cách giải nén bản mới ra thư mục KHÁC: tìm + nhập dữ liệu bản cũ rồi giữ đúng số thứ tự
+// dotnet run -c Release -- upgrade <config-ban-cu.json> <phones.json>   (chỉ dùng thư mục tạm)
+if (args.Contains("upgrade"))
+{
+    var a2 = args.SkipWhile(a => a != "upgrade").Skip(1).ToArray();
+    var oldCfg = a2[0]; var phonesFile = a2[1];
+    var root = Path.Combine(Path.GetTempPath(), "cp-upgrade-" + DateTime.Now.ToString("HHmmss"));
+    var oldData = Path.Combine(root, "ControlPhone-v2.0.1-win64", "data");
+    var olderData = Path.Combine(root, "ControlPhone-v2.0.0-win64", "ControlPhone-v2.0.0-win64", "data"); // giải nén lồng 1 cấp
+    var newExe = Path.Combine(root, "ControlPhone-v2.0.9-win64");
+    Directory.CreateDirectory(oldData); Directory.CreateDirectory(olderData); Directory.CreateDirectory(newExe);
+    File.Copy(oldCfg, Path.Combine(oldData, "config.json"));
+    File.Copy(oldCfg, Path.Combine(olderData, "config.json"));
+    File.SetLastWriteTime(Path.Combine(olderData, "config.json"), DateTime.Now.AddDays(-30));
+    var own = Path.Combine(newExe, "data");
+    var cands = DataImport.FindPrevious(newExe, own, userFolders: false);
+    foreach (var c in cands) Console.WriteLine($"  tìm thấy: {c.Dir} · {c.Phones} máy · {c.Modified:dd/MM HH:mm}");
+    Check(cands.Count == 2 && cands[0].Dir.Contains("v2.0.1"), "Tìm thấy dữ liệu bản cũ cạnh thư mục bản mới (cả bản giải nén lồng thư mục), mới nhất trước");
+    DataImport.Import(cands[0].Dir, own);
+    Check(File.Exists(Path.Combine(own, "config.json")), "Nhập dữ liệu vào thư mục bản mới");
+    // bản mới dùng dữ liệu vừa nhập: số thứ tự của từng máy (theo serial USB) phải giữ như bản cũ
+    File.Copy(Path.Combine(own, "config.json"), Path.Combine(dataCopy, "config.json"), true);
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    var oldNums = System.Text.Json.JsonDocument.Parse(File.ReadAllText(oldCfg)).RootElement.GetProperty("devices").EnumerateObject().ToDictionary(e => e.Name, e => e.Value.GetProperty("num").GetInt32());
+    var phones2 = System.Text.Json.JsonSerializer.Deserialize<List<Dictionary<string, string>>>(File.ReadAllText(phonesFile))!;
+    var mgr3 = Ui(() => new DeviceManager(ui!));
+    var resolve2 = typeof(DeviceManager).GetMethod("ResolveId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+    int kept = 0, known = 0;
+    foreach (var ph in phones2)
+    {
+        var id = Ui(() => (string)resolve2.Invoke(mgr3, [ph["SerialNo"], ph["Aid"], "usb", ph["Usb"]])!);
+        var num = Ui(() => Store.Meta(id).Num);
+        if (oldNums.TryGetValue(ph["Usb"], out var on)) { known++; if (on == num) kept++; else Console.WriteLine($"  KHÁC: {ph["Usb"]} cũ #{on} → #{num}"); }
+        else Console.WriteLine($"  máy mới (bản cũ chưa có): {ph["Usb"]} → #{num}");
+    }
+    Check(known > 0 && kept == known, "Mọi máy đã có trong bản cũ giữ nguyên số thứ tự", $"{kept}/{known}");
+    try { Directory.Delete(root, true); } catch { }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // định danh theo serial USB + chuyển mục cũ (không kết nối máy): dotnet run -c Release -- identity <phones.json>
 // phones.json: [{Usb, SerialNo, Aid}] đọc từ máy thật; chạy trên BẢN SAO cấu hình
 if (args.Contains("identity"))

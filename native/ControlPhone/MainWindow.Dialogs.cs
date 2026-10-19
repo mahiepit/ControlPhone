@@ -361,6 +361,23 @@ public partial class MainWindow
     }
 
     // ---------------- cài đặt ----------------
+    /// <summary>Nhập dữ liệu của bản cũ (sao lưu dữ liệu hiện tại) rồi khởi động lại để dùng.</summary>
+    void ImportPrevious(Window owner, string fromDataDir)
+    {
+        if (Path.GetFullPath(fromDataDir).TrimEnd('\\').Equals(Path.GetFullPath(Store.DataDir).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+        { Ui.Toast("Đây chính là thư mục dữ liệu đang dùng", "err"); return; }
+        if (!Ui.Confirm("Nhập dữ liệu từ bản cũ", T("Dùng dữ liệu (số thứ tự, tên, nhóm, cài đặt) trong:\n{0}\n\nDữ liệu hiện tại được sao lưu (.before-import-…). ControlPhone sẽ khởi động lại.", fromDataDir), "Nhập & khởi động lại")) return;
+        try
+        {
+            Store.SuspendSaving(); // không để phiên đang chạy ghi đè lên dữ liệu vừa chép vào
+            DataImport.Import(fromDataDir);
+        }
+        catch (Exception e) { Ui.Toast(T("Không nhập được dữ liệu: {0}", e.Message), "err", 8000); return; }
+        owner.Close();
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--restart") { UseShellExecute = false });
+        Close();
+    }
+
     void DlgSettings()
     {
         var s = Store.Settings;
@@ -409,6 +426,25 @@ public partial class MainWindow
         browse.Margin = new Thickness(6, 0, 0, 0);
         var sdRow = new DockPanel(); DockPanel.SetDock(browse, Dock.Right); sdRow.Children.Add(browse); sdRow.Children.Add(shotDir);
         d.Body.Children.Add(d.Field("Thư mục lưu ảnh chụp", sdRow));
+        // dữ liệu (số thứ tự, tên, nhóm): xem đang dùng thư mục nào + nhập từ bản ControlPhone cũ
+        var dataPath = new TextBox { Text = Store.DataDir, IsReadOnly = true };
+        Button? importBtn = null;
+        importBtn = Ui.Btn("Nhập dữ liệu từ bản cũ…", "upload", "Btn", (_, _) =>
+        {
+            var items = new List<MenuSpec?>();
+            foreach (var c in DataImport.FindPrevious().Take(8))
+                items.Add(new MenuSpec($"{c.Dir}  ·  {T("{0} máy", c.Phones)}  ·  {c.Modified:dd/MM HH:mm}", "folder", () => ImportPrevious(d, c.Dir)));
+            if (items.Count > 0) items.Add(null);
+            items.Add(new MenuSpec(T("Chọn tệp config.json khác…"), "file", () =>
+            {
+                var dlg = new OpenFileDialog { Filter = "config.json|config.json", InitialDirectory = Path.GetDirectoryName(AppContext.BaseDirectory.TrimEnd('\\')) ?? "" };
+                if (dlg.ShowDialog(d) == true) ImportPrevious(d, Path.GetDirectoryName(dlg.FileName)!);
+            }));
+            Ui.ShowMenu(items, importBtn);
+        });
+        importBtn.Margin = new Thickness(6, 0, 0, 0);
+        var dataRow = new DockPanel(); DockPanel.SetDock(importBtn, Dock.Right); dataRow.Children.Add(importBtn); dataRow.Children.Add(dataPath);
+        d.Body.Children.Add(d.Field("Thư mục dữ liệu (số thứ tự, tên, nhóm máy)", dataRow));
         var screenOff = d.AddCheck("Tự tắt màn hình điện thoại khi kết nối (vẫn xem & điều khiển được, tiết kiệm pin — thoát app màn hình tự bật lại)", s.ScreenOffOnConnect);
         var powerOn = d.AddCheck("Đánh thức điện thoại khi kết nối", s.PowerOnConnect);
         var autoWifi = d.AddCheck("Tự kết nối lại các máy WiFi đã từng kết nối", s.AutoReconnectWifi);
