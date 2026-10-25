@@ -115,7 +115,8 @@ public sealed class ScrcpySession : IDisposable
         var jar = $"/data/local/tmp/controlphone-{scid}.jar";
         var cmd = $"cp {ServerRemote} {jar} && CLASSPATH={jar} app_process / com.genymobile.scrcpy.Server {string.Join(' ', args)}";
         commandLine = cmd;
-        shellSock = await AdbClient.OpenServiceAsync(Addr, "shell:" + cmd, 15000, ct).ConfigureAwait(false);
+        // adb server dùng chung có lúc rất chậm (nhiều chương trình cùng dùng) → chờ tới 30 giây thay vì báo lỗi rồi thử lại
+        shellSock = await AdbClient.OpenServiceAsync(Addr, "shell:" + cmd, 30000, ct).ConfigureAwait(false);
         _ = Task.Run(ReadShellLog);
 
         var socketName = "localabstract:scrcpy_" + scid;

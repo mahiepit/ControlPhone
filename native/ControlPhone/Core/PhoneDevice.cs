@@ -119,7 +119,14 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     internal long WatchSince, WatchFrames; internal bool WatchKf; internal int WatchResets; internal bool Watching;
 
     public ScrcpySession? ControlSession => Thumb is { Running: true } t ? t : Hq is { Running: true } h ? h : null;
-    public FrameBuffer? Frames => ThumbDecoder?.Output;
+    /// <summary>Khung cho ô lưới: luồng "tăng tốc" (máy đang trỏ chuột, 30 khung/giây) khi đã có hình, ngược lại luồng lưới.</summary>
+    public FrameBuffer? Frames => BoostReady && BoostDecoder != null ? BoostDecoder.Output : ThumbDecoder?.Output;
+    // luồng tăng tốc cho máy đang được trỏ chuột / điều khiển (lưới chạy thưa cho nhẹ, máy đang thao tác thì mượt)
+    internal ScrcpySession? Boost;
+    internal H264Decoder? BoostDecoder;
+    internal volatile bool BoostReady;
+    internal CancellationTokenSource? BoostOffCts;
+    internal long BoostSince;
     public FrameBuffer? HqFrames => HqDecoder?.Output;
 
     public PhoneDevice(string id) { Id = id; }

@@ -167,6 +167,28 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// tăng tốc máy đang trỏ chuột (1 máy, không mở luồng lưới các máy khác): dotnet run -c Release -- boost <serial>
+if (args.Contains("boost"))
+{
+    var serial = args.SkipWhile(a => a != "boost").Skip(1).First();
+    UiDo(() => { Store.Load(); I18n.Init("vi"); Store.Settings.ThumbFps = 5; });
+    var mgrB = Ui(() => new DeviceManager(ui!));
+    var dev = Ui(() => new PhoneDevice(serial) { ActiveAddr = serial, Status = "online" });
+    UiDo(() => mgrB.SetBoost(dev, true));
+    var swB = System.Diagnostics.Stopwatch.StartNew();
+    while (swB.Elapsed.TotalSeconds < 10 && !Ui(() => dev.BoostReady)) await Task.Delay(100);
+    var readyAt = swB.Elapsed.TotalSeconds;
+    var usesBoost = Ui(() => dev.BoostReady && ReferenceEquals(dev.Frames, dev.BoostDecoder!.Output) && dev.Frames!.Frames > 0);
+    Check(usesBoost, "Bật tăng tốc: ô chuyển sang luồng 30 khung/giây khi đã có hình", $"sau {readyAt:0.0}s, fps tối đa {Ui(() => dev.Boost?.Options.MaxFps)}");
+    UiDo(() => mgrB.SetBoost(dev, false));
+    await Task.Delay(1500);
+    Check(Ui(() => dev.Boost != null), "Rời chuột: chưa tắt ngay (tránh mở/đóng liên tục)");
+    await Task.Delay(3500);
+    Check(Ui(() => dev.Boost == null && !dev.BoostReady), "Sau ~4 giây: về luồng lưới, đóng luồng tăng tốc");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // server không chạy được: báo rõ "đã thoát" + đầu ra của server (dotnet run -c Release -- startfail <serial>)
 // cách thử: phiên đầu push server; xoá server trên máy → phiên sau chép thất bại → server thoát ngay; cuối cùng push lại
 if (args.Contains("startfail"))
@@ -203,9 +225,10 @@ if (args.Contains("keepalive"))
         serial = devs.FirstOrDefault(d => d.State == "device")?.Addr;
     }
     if (serial == null) { Console.WriteLine("Không có máy"); return 1; }
+    bool stay = args.Contains("stay");
     foreach (var video in new[] { true, false })
     {
-        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = video, PowerOn = false });
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { Video = video, PowerOn = false, StayAwake = stay });
         await s.StartAsync();
         await Task.Delay(12000);
         Console.WriteLine($"{serial} video={video}: {s.PacketsReceived} gói hình, {s.KeepAlives} tin giữ kết nối trong 12 giây");

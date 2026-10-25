@@ -395,6 +395,70 @@ public sealed class DeviceManager : IDisposable
         catch { /* nhật ký không bắt buộc */ }
     }
 
+    // ---------- tăng tốc máy đang trỏ chuột ----------
+    const int BoostFps = 30, MaxBoosts = 2;
+
+    /// <summary>
+    /// Máy đang được trỏ chuột / điều khiển: mở thêm 1 luồng 30 khung/giây (lưới vẫn chạy thưa cho nhẹ — giống Xiaowei:
+    /// cả lưới chỉ 2 khung/giây, máy đang thao tác thì mượt). Bật: đổi sang luồng mới chỉ khi nó đã có hình (không chớp đen).
+    /// Tắt: trễ vài giây (rê chuột qua lại không phải mở luồng liên tục).
+    /// </summary>
+    public void SetBoost(PhoneDevice d, bool on)
+    {
+        if (!on)
+        {
+            if (d.Boost == null) return;
+            d.BoostOffCts?.Cancel();
+            d.BoostOffCts = new CancellationTokenSource();
+            var tok = d.BoostOffCts.Token;
+            _ = Task.Delay(4000, tok).ContinueWith(t => { if (!t.IsCanceled) ui.BeginInvoke(() => ClearBoost(d)); }, TaskScheduler.Default);
+            return;
+        }
+        d.BoostOffCts?.Cancel();
+        if (d.Boost != null || stopping || d.Pending || d.ActiveAddr == null || !d.IsOnline || !ThumbWantsVideo(d)) return;
+        if (Store.Settings.ThumbFps >= 20) return; // lưới đã mượt sẵn
+        foreach (var o in byId.Values.Where(x => x.Boost != null).OrderBy(x => x.BoostSince).Skip(MaxBoosts - 1).ToList()) ClearBoost(o);
+        var s = Store.Settings;
+        var sess = new ScrcpySession(d.ActiveAddr, new ScrcpyOptions
+        {
+            MaxSize = s.ThumbMaxSize, BitRate = Math.Max(s.ThumbBitRate, 1_000_000), MaxFps = BoostFps, PowerOn = false, StayAwake = false, Video = true,
+        });
+        d.Boost = sess;
+        d.BoostSince = Environment.TickCount64;
+        d.BoostDecoder ??= new H264Decoder(threads: 1);
+        var dec = d.BoostDecoder;
+        dec.Resume();
+        long frames0 = dec.Output.Frames;
+        bool ready = false;
+        sess.Packet += (isConfig, isKey, data) =>
+        {
+            if (d.Boost != sess) return;
+            dec.Feed(isConfig, isKey, data);
+            if (!ready && dec.Output.Frames > frames0)
+            {
+                ready = true;
+                ui.BeginInvoke(() => { if (d.Boost == sess) { d.BoostReady = true; dec.Output.MarkDirty(); } });
+            }
+        };
+        sess.Ended += _ => ui.BeginInvoke(() => { if (d.Boost == sess) ClearBoost(d); });
+        _ = Task.Run(async () =>
+        {
+            try { await sess.StartAsync(cts.Token); }
+            catch { ui.BeginInvoke(() => { if (d.Boost == sess) ClearBoost(d); }); sess.Dispose(); }
+        });
+    }
+
+    void ClearBoost(PhoneDevice d)
+    {
+        var b = d.Boost;
+        if (b == null) return;
+        d.Boost = null;
+        d.BoostReady = false;
+        d.BoostOffCts?.Cancel();
+        d.ThumbDecoder?.Output.MarkDirty(); // ô quay về luồng lưới: vẽ ngay khung gần nhất
+        b.Dispose();
+    }
+
     void OnThumbEnded(PhoneDevice d, ScrcpySession sess, string reason)
     {
         if (d.Thumb == sess)
@@ -451,6 +515,7 @@ public sealed class DeviceManager : IDisposable
     void SyncThumbMode(PhoneDevice d)
     {
         if (d.Pending || d.ActiveAddr == null) return;
+        if (!ThumbWantsVideo(d)) ClearBoost(d);
         var t = d.Thumb;
         if (t != null && t.Options.Video == ThumbWantsVideo(d)) return;
         d.RestartCts?.Cancel();
@@ -463,6 +528,7 @@ public sealed class DeviceManager : IDisposable
 
     void StopSessions(PhoneDevice d)
     {
+        ClearBoost(d);
         d.RestartCts?.Cancel();
         var t = d.Thumb; var h = d.Hq;
         d.Thumb = null; d.Hq = null;
@@ -483,6 +549,7 @@ public sealed class DeviceManager : IDisposable
 
     public void AcquireHq(PhoneDevice d)
     {
+        ClearBoost(d); // màn hình lớn có luồng nét riêng
         d.HqRefs++;
         d.HqFails = 0;
         EnsureHq(d);

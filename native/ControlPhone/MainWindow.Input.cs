@@ -22,6 +22,17 @@ public partial class MainWindow
     sealed class TouchState { public List<PhoneDevice> Targets = []; public PhoneTile? Tile; public FrameworkElement Box = null!; public bool Pinch; public bool Viewer; public Point? Pending; public double LastMove; public bool Lifted; public List<(double T, Point P)> Track = []; }
     TouchState? touch;
     PhoneDevice? hoverDev;
+    // dừng chuột ~150 ms trên một máy → máy đó chạy luồng mượt (30 khung/giây); rời đi → vài giây sau về luồng thưa
+    readonly DispatcherTimer hoverDwell = new() { Interval = TimeSpan.FromMilliseconds(150) };
+
+    void SetHover(PhoneDevice? d)
+    {
+        if (d == hoverDev) return;
+        if (hoverDev != null) manager.SetBoost(hoverDev, false);
+        hoverDev = d;
+        hoverDwell.Stop();
+        if (d != null) hoverDwell.Start();
+    }
 
     void InitInput()
     {
@@ -29,8 +40,9 @@ public partial class MainWindow
         GridArea.PreviewMouseMove += GridMouseMove;
         GridArea.PreviewMouseUp += GridMouseUp;
         GridArea.PreviewMouseWheel += GridWheel;
-        GridArea.MouseMove += (_, e) => hoverDev = TileAt(e.OriginalSource, out var t) is { } d && t != null && IsOver(t.ScreenArea, e) && d.IsOnline ? d : null;
-        GridArea.MouseLeave += (_, _) => hoverDev = null;
+        GridArea.MouseMove += (_, e) => SetHover(TileAt(e.OriginalSource, out var t) is { } d && t != null && IsOver(t.ScreenArea, e) && d.IsOnline ? d : null);
+        GridArea.MouseLeave += (_, _) => { if (touch == null) SetHover(null); };
+        hoverDwell.Tick += (_, _) => { hoverDwell.Stop(); if (hoverDev != null) manager.SetBoost(hoverDev, true); };
         PreviewKeyDown += OnKeyDown;
         PreviewKeyUp += OnKeyUp;
         PreviewTextInput += OnTextInput;
@@ -178,6 +190,7 @@ public partial class MainWindow
     {
         bool pinch = Keyboard.Modifiers.HasFlag(ModifierKeys.Alt);
         touch = new TouchState { Targets = targets, Tile = tile, Box = box, Pinch = pinch, Viewer = viewer };
+        if (tile?.Device is { } td) manager.SetBoost(td, true); // bấm vào ô: tăng tốc ngay, không chờ
         touch.Track.Add((NowMs, p));
         SendTouch(touch, ControlMessages.ActionDown, p);
     }
