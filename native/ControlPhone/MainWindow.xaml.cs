@@ -293,7 +293,7 @@ public partial class MainWindow : Window
     // ---------------- thanh trên ----------------
     void InitTopbar()
     {
-        BtnSidebar.Click += (_, _) => { Store.Ui.Sidebar = Sidebar.Visibility != Visibility.Visible; Sidebar.Visibility = Store.Ui.Sidebar ? Visibility.Visible : Visibility.Collapsed; Store.SaveUi(); };
+        BtnSidebar.Click += (_, _) => { Store.Ui.Sidebar = Sidebar.Visibility != Visibility.Visible; Sidebar.Visibility = Store.Ui.Sidebar ? Visibility.Visible : Visibility.Collapsed; Store.SaveUi(); RenderSidebar(); };
         Sidebar.Visibility = Store.Ui.Sidebar ? Visibility.Visible : Visibility.Collapsed;
         BtnSync.Click += (_, _) => SetSyncOff(!syncOff);
         BtnSolo.Click += (_, _) => SetSolo(null);
@@ -505,6 +505,12 @@ public partial class MainWindow : Window
             ("bad", "plug", "Lỗi / mất kết nối", Cnt(d => !d.IsOnline)),
             ("paused", "pause", "Đang tạm dừng xem", Cnt(d => d.Paused)),
         ];
+        // chỉ dựng lại thanh bên khi thật sự đổi (hàm này chạy mỗi khi bất kỳ máy nào đổi pin/trạng thái);
+        // thanh bên đang ẩn thì khỏi dựng — mở ra sẽ dựng lại
+        if (Sidebar.Visibility != Visibility.Visible) { sidebarSig = null; return; }
+        var sig = filter + "|" + string.Join(",", filters.Select(f => f.N)) + "|" + string.Join(",", Store.State.Groups.Select(g => g + ":" + Cnt(d => d.Groups.Contains(g))));
+        if (sig == sidebarSig) return;
+        sidebarSig = sig;
         FiltersPanel.Children.Clear();
         filterCounts.Clear();
         foreach (var (k, ic, label, n) in filters) FiltersPanel.Children.Add(FilterRow(k, ic, T(label), n, k != "sel", null));
@@ -517,6 +523,8 @@ public partial class MainWindow : Window
         }
         foreach (var g in Store.State.Groups) GroupsPanel.Children.Add(FilterRow("group:" + g, "tag", g, Cnt(d => d.Groups.Contains(g)), true, g));
     }
+
+    string? sidebarSig;
 
     void RenderSidebarCounts() { if (filterCounts.TryGetValue("sel", out var t)) t.Text = selected.Count.ToString(); }
 

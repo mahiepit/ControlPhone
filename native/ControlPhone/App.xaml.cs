@@ -34,6 +34,8 @@ public partial class App : Application
             MessageBox.Show(ex.Exception.Message, "ControlPhone", MessageBoxButton.OK, MessageBoxImage.Warning);
             ex.Handled = true;
         };
+        // tránh các lần dọn rác dài làm khựng hình / chuột (luồng video cấp phát liên tục)
+        System.Runtime.GCSettings.LatencyMode = System.Runtime.GCLatencyMode.SustainedLowLatency;
         OfferPreviousData();
         Store.Load();
         I18n.Init(Store.Ui.Lang);

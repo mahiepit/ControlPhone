@@ -401,7 +401,7 @@ public partial class MainWindow
         var tBr = Num("Bitrate (kbps)", s.ThumbBitRate / 1000, out var f2);
         var tFps = Num("FPS tối đa", s.ThumbFps, out var f3);
         d.Body.Children.Add(Row3(f1, f2, f3));
-        foreach (var (label, mx, br, fps) in new[] { ("Siêu nhẹ (360p/10fps)", 360, 300, 10), ("Cân bằng (480p/15fps)", 480, 600, 15), ("Rõ nét (720p/24fps)", 720, 1500, 24) })
+        foreach (var (label, mx, br, fps) in new[] { ("Như Xiaowei (480p/2fps)", 480, 50, 2), ("Nhẹ (480p/5fps)", 480, 150, 5), ("Cân bằng (480p/15fps)", 480, 600, 15), ("Rõ nét (720p/24fps)", 720, 1500, 24) })
         {
             var b = SmallBtn(label, null, () => { tMax.Text = mx.ToString(); tBr.Text = br.ToString(); tFps.Text = fps.ToString(); });
             b.Margin = new Thickness(0, 0, 6, 0); pre.Children.Add(b);
@@ -470,7 +470,7 @@ public partial class MainWindow
             var before = (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect);
             var beforeHq = (s.HqMaxSize, s.HqBitRate, s.HqFps);
             var prefBefore = s.PreferTransport;
-            s.ThumbMaxSize = I(tMax, 480, 160, 1920); s.ThumbBitRate = I(tBr, 600, 100, 20000) * 1000; s.ThumbFps = I(tFps, 15, 1, 60);
+            s.ThumbMaxSize = I(tMax, 480, 160, 1920); s.ThumbBitRate = I(tBr, 150, 30, 20000) * 1000; s.ThumbFps = I(tFps, 5, 1, 60);
             s.HqMaxSize = I(hMax, 1280, 320, 2560); s.HqBitRate = I(hBr, 4000, 500, 40000) * 1000; s.HqFps = I(hFps, 30, 5, 60);
             s.PreferTransport = (string)((ComboBoxItem)pref.SelectedItem).Tag;
             s.MaxParallelStart = I(mps, 6, 1, 30); s.MaxParallelJobs = I(mpj, 10, 1, 50);

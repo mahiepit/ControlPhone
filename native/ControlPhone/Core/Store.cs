@@ -8,8 +8,11 @@ namespace ControlPhone.Core;
 public sealed class Settings
 {
     public int ThumbMaxSize { get; set; } = 480;
-    public int ThumbBitRate { get; set; } = 600_000;
-    public int ThumbFps { get; set; } = 15;
+    // lưới mặc định nhẹ (Xiaowei chỉ 480p · 2 fps · 50 kbps): 40 máy × 15 fps = 600 khung/giây làm cả app ì
+    public int ThumbBitRate { get; set; } = 150_000;
+    public int ThumbFps { get; set; } = 5;
+    /// <summary>Phiên bản cài đặt (để chuyển đổi một lần khi đổi mặc định).</summary>
+    public int Rev { get; set; }
     public int HqMaxSize { get; set; } = 1280;
     public int HqBitRate { get; set; } = 4_000_000;
     public int HqFps { get; set; } = 30;
@@ -142,6 +145,13 @@ public static class Store
             try { if (json != null) System.IO.File.WriteAllText(File + $".unreadable-{DateTime.Now:yyyyMMdd-HHmmss}", json); } catch { }
         }
         State.Settings ??= new();
+        // 2.0.11: lưới mặc định cũ 480p · 15 fps · 600 kbps → 480p · 5 fps · 150 kbps (chỉ khi người dùng chưa tự chỉnh)
+        if (State.Settings.Rev < 1)
+        {
+            var st = State.Settings;
+            if (st.ThumbMaxSize == 480 && st.ThumbBitRate == 600_000 && st.ThumbFps == 15) { st.ThumbBitRate = 150_000; st.ThumbFps = 5; }
+            st.Rev = 1;
+        }
         State.Devices ??= [];
         foreach (var m in State.Devices.Values) m.Groups ??= [];
         if (string.IsNullOrWhiteSpace(Settings.ScreenshotDir)) Settings.ScreenshotDir = Path.Combine(Path.GetDirectoryName(DataDir) ?? AppContext.BaseDirectory, "screenshots");

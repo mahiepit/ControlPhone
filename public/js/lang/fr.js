@@ -550,4 +550,6 @@ export default {
   "Không nhập được dữ liệu: {0}": "Impossible d'importer les données : {0}",
   "Đây chính là thư mục dữ liệu đang dùng": "C'est déjà le dossier de données utilisé",
   "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "Arrêter ADB à la fermeture de ControlPhone (désactivé par défaut : adb reste actif pour les autres programmes)",
+  "Như Xiaowei (480p/2fps)": "Comme Xiaowei (480p/2ips)",
+  "Nhẹ (480p/5fps)": "Léger (480p/5ips)",
 };

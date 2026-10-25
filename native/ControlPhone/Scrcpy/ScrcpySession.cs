@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading.Channels;
 using ControlPhone.Adb;
 
 namespace ControlPhone.Scrcpy;
@@ -48,7 +49,6 @@ public sealed class ScrcpySession : IDisposable
 
     Socket? shellSock, videoSock, controlSock;
     NetworkStream? control;
-    readonly object controlLock = new();
     readonly Queue<string> logTail = new();
     long lastResetAt, lastIo;
 
@@ -155,6 +155,7 @@ public sealed class ScrcpySession : IDisposable
             await RefreshScreenSizeAsync().ConfigureAwait(false);
             Running = true;
             Live[this] = 0;
+            _ = Task.Run(WriterLoop);
             new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
             return;
         }
@@ -163,6 +164,7 @@ public sealed class ScrcpySession : IDisposable
         control = new NetworkStream(controlSock, ownsSocket: false);
         Running = true;
         Live[this] = 0;
+        _ = Task.Run(WriterLoop);
         new Thread(VideoLoop) { IsBackground = true, Name = "video " + Addr, Priority = ThreadPriority.AboveNormal }.Start();
         new Thread(ControlLoop) { IsBackground = true, Name = "control " + Addr }.Start();
     }
@@ -277,11 +279,30 @@ public sealed class ScrcpySession : IDisposable
         catch { /* đóng */ }
     }
 
+    /// <summary>
+    /// Gửi lệnh điều khiển: chỉ XẾP HÀNG (không bao giờ bắt luồng giao diện chờ socket); một tác vụ nền ghi lần lượt,
+    /// giữ đúng thứ tự. Hàng đầy (kết nối kẹt) → bỏ lệnh thay vì làm đơ chuột.
+    /// </summary>
     public bool Send(byte[] msg)
     {
         if (!Running || control == null) return false;
-        try { lock (controlLock) control.Write(msg); Interlocked.Exchange(ref lastIo, Environment.TickCount64); return true; }
-        catch { Close("control đóng"); return false; }
+        if (!sendQ.Writer.TryWrite(msg)) return false;
+        Interlocked.Exchange(ref lastIo, Environment.TickCount64);
+        return true;
+    }
+
+    readonly Channel<byte[]> sendQ = Channel.CreateBounded<byte[]>(
+        new BoundedChannelOptions(1024) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
+
+    async Task WriterLoop()
+    {
+        try
+        {
+            var r = sendQ.Reader;
+            while (await r.WaitToReadAsync().ConfigureAwait(false))
+                while (r.TryRead(out var m)) await control!.WriteAsync(m).ConfigureAwait(false);
+        }
+        catch { Close("control đóng"); }
     }
 
     public void RequestKeyFrame()
@@ -329,6 +350,7 @@ public sealed class ScrcpySession : IDisposable
         Closed = true;
         Running = false;
         Live.TryRemove(this, out _);
+        sendQ.Writer.TryComplete();
         foreach (var s in new[] { videoSock, controlSock, shellSock }) { try { s?.Dispose(); } catch { } }
         Ended?.Invoke(reason);
     }
