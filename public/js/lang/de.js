@@ -553,4 +553,5 @@ export default {
   "Như Xiaowei (480p/2fps)": "Wie Xiaowei (480p/2fps)",
   "Nhẹ (480p/5fps)": "Leicht (480p/5fps)",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "Raster nutzt den Software-Encoder des Telefons (fast keine Bildverzögerung — wie Xiaowei; abwählen für Hardware-Encoder)",
+  "Nhẹ (480p/10fps)": "Leicht (480p/10fps)",
 };

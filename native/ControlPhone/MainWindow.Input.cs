@@ -69,6 +69,7 @@ public partial class MainWindow
     // ---------------- chuột trên lưới ----------------
     void GridMouseDown(object sender, MouseButtonEventArgs e)
     {
+        using var _op = StallWatch.Op("chuột: bấm");
         var d = TileAt(e.OriginalSource, out var tile);
         bool onScreen = tile != null && IsOver(tile.ScreenArea, e);
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control), shift = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
@@ -104,6 +105,7 @@ public partial class MainWindow
 
     void GridMouseMove(object sender, MouseEventArgs e)
     {
+        using var _op = StallWatch.Op("chuột: kéo");
         if (touch is { Viewer: false } t)
         {
             DragTouch(t.Tile!.Norm(e.GetPosition(t.Box), clamp: false));
@@ -134,6 +136,7 @@ public partial class MainWindow
 
     void GridMouseUp(object sender, MouseButtonEventArgs e)
     {
+        using var _op = StallWatch.Op("chuột: thả");
         if (touch is { Viewer: false }) { EndTouch(touch.Tile!.Norm(e.GetPosition(touch.Box))); GridArea.ReleaseMouseCapture(); e.Handled = true; return; }
         if (drag == null) return;
         var dd = drag;
@@ -319,6 +322,7 @@ public partial class MainWindow
 
     void OnKeyDown(object sender, KeyEventArgs e)
     {
+        using var _op = StallWatch.Op("bàn phím");
         if (InTextField()) return;
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var mods = Keyboard.Modifiers;

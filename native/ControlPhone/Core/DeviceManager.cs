@@ -63,6 +63,7 @@ public sealed class DeviceManager : IDisposable
     // ---------- theo dõi adb ----------
     void OnTrack(IReadOnlyList<AdbDevice> list)
     {
+        using var _op = StallWatch.Op("adb: danh sách máy thay đổi");
         if (stopping) return;
         lastTrack = list;
         var seen = list.ToDictionary(x => x.Addr, x => x.State);
@@ -130,6 +131,7 @@ public sealed class DeviceManager : IDisposable
             }
             finally { probeLimiter.Release(); }
             if (serialStates.GetValueOrDefault(addr) != "device") return;
+            using var _op = StallWatch.Op("nhận máy (sau khi đọc thông tin)");
             ClearProbeError(addr);
             var lines = text.Split('\n').Select(s => s.Trim()).ToArray();
             var aidM = Regex.Match(text, @"AID=([0-9a-f]{6,})", RegexOptions.IgnoreCase);
@@ -320,6 +322,7 @@ public sealed class DeviceManager : IDisposable
 
     void EnsureThumb(PhoneDevice d)
     {
+        using var _op = StallWatch.Op("mở luồng lưới");
         if (stopping || d.Thumb != null || d.ActiveAddr == null || d.Pending) return;
         d.RestartCts?.Cancel();
         var sess = new ScrcpySession(d.ActiveAddr, ThumbOptions(d));
@@ -414,6 +417,7 @@ public sealed class DeviceManager : IDisposable
     /// </summary>
     public void SetBoost(PhoneDevice d, bool on)
     {
+        using var _op = StallWatch.Op("bật/tắt tăng tốc");
         if (!on)
         {
             if (d.Boost == null) return;
@@ -465,6 +469,7 @@ public sealed class DeviceManager : IDisposable
 
     void ClearBoost(PhoneDevice d)
     {
+        using var _op = StallWatch.Op("đóng luồng tăng tốc");
         var b = d.Boost;
         if (b == null) return;
         d.Boost = null;
@@ -476,6 +481,7 @@ public sealed class DeviceManager : IDisposable
 
     void OnThumbEnded(PhoneDevice d, ScrcpySession sess, string reason)
     {
+        using var _op = StallWatch.Op("luồng lưới đóng");
         // server kết nối được rồi mới báo "Video encoder ... not found" và thoát → máy không có bộ mã hoá phần mềm: dùng mặc định
         if (d.Thumb == sess && EncoderMissing(sess, reason)) { d.NoSwEncoder = true; d.RestartDelayMs = 300; }
         if (d.Thumb == sess)
@@ -682,6 +688,7 @@ public sealed class DeviceManager : IDisposable
                 var level = M(@"level:\s*(\d+)"); var temp = M(@"temperature:\s*(-?\d+)"); var wake = M(@"mWakefulness=(\w+)");
                 await ui.InvokeAsync(() =>
                 {
+                    using var _op = StallWatch.Op("cập nhật pin / IP");
                     d.Battery = level != null ? int.Parse(level) : null;
                     d.Temp = temp != null && int.Parse(temp) > 0 ? int.Parse(temp) / 10.0 : null;
                     d.Charging = Regex.IsMatch(o, @"(AC|USB|Wireless) powered:\s*true");
@@ -700,16 +707,36 @@ public sealed class DeviceManager : IDisposable
     {
         if (!Store.Settings.AutoReconnectWifi || stopping) return;
         var targets = new List<string>();
+        long now = Environment.TickCount64;
         foreach (var (id, meta) in Store.State.Devices)
         {
             if (string.IsNullOrEmpty(meta.Wifi) || serialStates.ContainsKey(meta.Wifi)) continue;
             // chỉ tự nối lại khi máy đang không có kết nối nào (tránh làm phiền khi đã có USB)
             if (byId.TryGetValue(id, out var d) && d.ActiveAddr != null) continue;
+            // địa chỉ cứ thất bại (máy đã tắt / đổi IP): thử thưa dần tới 10 phút/lần thay vì mỗi 20 giây
+            if (wifiBackoff.TryGetValue(meta.Wifi, out var b) && now < b.NextAt) continue;
             targets.Add(meta.Wifi);
         }
         using var lim = new SemaphoreSlim(8);
-        await Task.WhenAll(targets.Select(async t => { await lim.WaitAsync(); try { await AdbClient.RunAsync(["connect", t], 6000); } finally { lim.Release(); } }));
+        await Task.WhenAll(targets.Select(async t =>
+        {
+            await lim.WaitAsync();
+            try
+            {
+                var r = await AdbClient.RunAsync(["connect", t], 6000);
+                bool ok = r.Out.Contains("connected to", StringComparison.OrdinalIgnoreCase) && !r.Out.Contains("unable", StringComparison.OrdinalIgnoreCase);
+                await ui.InvokeAsync(() =>
+                {
+                    if (ok) { wifiBackoff.Remove(t); return; }
+                    int fails = wifiBackoff.TryGetValue(t, out var old) ? old.Fails + 1 : 1;
+                    wifiBackoff[t] = (fails, Environment.TickCount64 + Math.Min(20_000L << Math.Min(fails, 5), 600_000));
+                });
+            }
+            finally { lim.Release(); }
+        }));
     }
+
+    readonly Dictionary<string, (int Fails, long NextAt)> wifiBackoff = [];
 
     // ---------- chẩn đoán ----------
     public sealed record DiagRow(string Addr, string State, string Tid, string Tile, bool Ok, string Note);

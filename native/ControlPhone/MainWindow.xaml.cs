@@ -57,10 +57,10 @@ public partial class MainWindow : Window
         manager.Log += (m, err) => Ui.Toast(m, err ? "err" : "");
         manager.Clipboard += OnPhoneClipboard;
         actions.TaskUpdated += OnTask;
-        refreshTimer.Tick += (_, _) => { refreshTimer.Stop(); RenderAll(); };
-        statsTimer.Tick += (_, _) => UpdateBandwidth();
-        tickTimer.Tick += (_, _) => { UpdateVisibility(); manager.WatchTick(); };
-        frameTimer.Tick += OnRender;
+        refreshTimer.Tick += (_, _) => { refreshTimer.Stop(); using (StallWatch.Op("dựng lại lưới")) RenderAll(); };
+        statsTimer.Tick += (_, _) => { using (StallWatch.Op("thống kê băng thông")) UpdateBandwidth(); };
+        tickTimer.Tick += (_, _) => { using (StallWatch.Op("vùng nhìn + theo dõi khung")) { UpdateVisibility(); manager.WatchTick(); } };
+        frameTimer.Tick += (s, e) => { using (StallWatch.Op("chép khung hình")) OnRender(s, e); };
 
         InitTopbar();
         InitSidebar();
@@ -89,6 +89,7 @@ public partial class MainWindow : Window
             }
             RenderAll();
             if (SelfTest.On) _ = RunSelfTest();
+            if (!SelfTest.On) StallWatch.Start(Dispatcher);
             PerfLog.Start(Dispatcher, () => $"ô {PhoneTile.Live.Count} · online {manager.Devices.Count(d => d.IsOnline)} · có hình {manager.Devices.Count(d => d.HasFrame)} · tăng tốc {manager.Devices.Count(d => d.Boost != null)}");
         };
         Closing += OnClosing;

@@ -167,6 +167,102 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// bộ phát hiện đứng hình: chặn luồng giao diện 400 ms trong 1 việc có đánh dấu → phải ghi lại đúng tên việc
+if (args.Contains("stall"))
+{
+    UiDo(() => Store.Load());
+    var logFile = Path.Combine(Store.DataDir, "logs", "ui-stalls.log");
+    if (File.Exists(logFile)) File.Delete(logFile);
+    ControlPhone.StallWatch.Start(ui!);
+    await Task.Delay(500);
+    UiDo(() => { using (ControlPhone.StallWatch.Op("việc thử chặn 400 ms")) Thread.Sleep(400); });
+    await Task.Delay(800);
+    var txt = File.Exists(logFile) ? File.ReadAllText(logFile) : "";
+    Console.WriteLine("  " + txt.Trim());
+    Check(txt.Contains("việc thử chặn 400 ms") && System.Text.RegularExpressions.Regex.IsMatch(txt, @"đứng ≥ (2|3|4|5)\d\d ms"), "Ghi lại lần đứng hình kèm tên việc đang chạy");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
+// gọi adb.exe từ luồng giao diện KHÔNG được làm đứng luồng đó: dotnet run -c Release -- uiblock
+if (args.Contains("uiblock"))
+{
+    var times = new List<double>();
+    for (int i = 0; i < 5; i++)
+    {
+        double ms = Ui(() => { var t0 = System.Diagnostics.Stopwatch.GetTimestamp(); _ = AdbClient.RunAsync(["version"], 5000); return System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds; });
+        times.Add(ms);
+        await Task.Delay(300);
+    }
+    // cách cũ (≤ 2.0.13): Process.Start chạy thẳng trên luồng giao diện
+    var oldTimes = new List<double>();
+    for (int i = 0; i < 5; i++)
+    {
+        oldTimes.Add(Ui(() =>
+        {
+            var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            var psi = new System.Diagnostics.ProcessStartInfo(AdbClient.AdbPath, "version") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true };
+            using var pr = System.Diagnostics.Process.Start(psi);
+            return System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+        }));
+        await Task.Delay(300);
+    }
+    Console.WriteLine($"  cách cũ: luồng giao diện bị giữ {string.Join(", ", oldTimes.Select(t => t.ToString("0")))} ms");
+    Check(times.Max() < 20, "Chạy adb.exe không chặn luồng giao diện", $"luồng giao diện bị giữ tối đa {times.Max():0.0} ms (5 lần: {string.Join(", ", times.Select(t => t.ToString("0.0")))})");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
+// độ trễ ĐIỀU KHIỂN đầu-cuối: gửi lệnh kéo thanh thông báo, đo tới khi hình trên PC đổi rõ (rồi đóng lại)
+// dotnet run -c Release -- ctl <serial>
+if (args.Contains("ctl"))
+{
+    var serial = args.SkipWhile(a => a != "ctl").Skip(1).First();
+    double TopBrightness(byte[] px, int w, int h)
+    {
+        long sum = 0; int n = 0;
+        for (int y = 0; y < h / 4; y += 4) for (int x = 0; x < w; x += 4) { int i = (y * w + x) * 4; sum += px[i] + px[i + 1] + px[i + 2]; n++; }
+        return n > 0 ? sum / (3.0 * n) : 0;
+    }
+    var onlyGrid = args.Contains("gridonly");
+    foreach (var (name, opt) in new (string, ControlPhone.Scrcpy.ScrcpyOptions)[]
+    {
+        ("lưới 480p 5fps phần mềm", new() { MaxSize = 480, BitRate = 150_000, MaxFps = 5, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+        ("lưới 480p 10fps phần mềm", new() { MaxSize = 480, BitRate = 300_000, MaxFps = 10, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+        ("lưới 480p 15fps phần mềm", new() { MaxSize = 480, BitRate = 500_000, MaxFps = 15, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+        ("tăng tốc 480p 30fps phần mềm", new() { MaxSize = 480, BitRate = 1_000_000, MaxFps = 30, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+        ("tăng tốc 480p 30fps phần cứng", new() { MaxSize = 480, BitRate = 1_000_000, MaxFps = 30, PowerOn = false }),
+        ("màn lớn 1280p 30fps phần cứng", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 30, PowerOn = false }),
+    })
+    {
+        if (onlyGrid && !name.StartsWith("lưới")) continue;
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, opt);
+        using var dec = new ControlPhone.Video.H264Decoder(1);
+        s.Packet += (c, k, d) => dec.Feed(c, k, d);
+        try { await s.StartAsync(); } catch (Exception e) { Console.WriteLine($"  {name}: lỗi {e.Message}"); continue; }
+        await Task.Delay(2500);
+        var res = new List<double>();
+        for (int i = 0; i < 3; i++)
+        {
+            double baseB = -1; dec.Output.MarkDirty(); dec.Output.TryTake((px, w, h) => baseB = TopBrightness(px, w, h));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            s.Send(ControlPhone.Scrcpy.ControlMessages.Empty(ControlPhone.Scrcpy.ControlMessages.ExpandNotificationPanel));
+            double? hit = null;
+            while (System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds < 3000 && hit == null)
+            {
+                double b = -1;
+                if (dec.Output.TryTake((px, w, h) => b = TopBrightness(px, w, h)) && baseB >= 0 && Math.Abs(b - baseB) > 18) hit = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                await Task.Delay(3);
+            }
+            if (hit != null) res.Add(hit.Value);
+            s.Send(ControlPhone.Scrcpy.ControlMessages.Empty(ControlPhone.Scrcpy.ControlMessages.CollapsePanels));
+            await Task.Delay(1800);
+        }
+        Console.WriteLine($"  {name,-30}: thao tác → hình đổi sau {(res.Count > 0 ? $"TB {res.Average():0} ms (min {res.Min():0}, max {res.Max():0})" : "không thấy")} ({res.Count}/3)");
+    }
+    return 0;
+}
+
 // máy không có bộ mã hoá đã chọn: xem scrcpy báo lỗi gì (để tự quay về bộ mã hoá mặc định)
 if (args.Contains("encfail"))
 {
@@ -318,6 +414,8 @@ if (args.Contains("xaml"))
     Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
     return fail == 0 ? 0 : 1;
 }
+// bộ kiểm thử đầy đủ mở luồng trên MỌI máy → chỉ chạy khi gọi rõ "full" (tránh chạy nhầm khi người dùng đang dùng app)
+if (!args.Contains("full")) { Console.WriteLine("Dùng: dotnet run -c Release -- full | kbd | store | xaml | grid | backup | keepalive <serial> | boost <serial> | latency <serial> | ctl <serial> | identity <phones.json> | upgrade <cfg> <phones.json> | otheradb | startfail <serial> | encfail <serial>"); return 2; }
 Console.WriteLine($"Dữ liệu: {Store.DataDir} · adb: {AdbClient.AdbPath}");
 DeviceManager mgr = null!;
 Actions act = null!;

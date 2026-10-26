@@ -162,12 +162,21 @@ public static class AdbClient
     // Đang thoát: không chạy thêm adb.exe nào (mọi lệnh adb.exe đều tự BẬT LẠI adb server nếu nó đang tắt)
     static volatile bool exiting;
 
-    /// <summary>Chạy adb.exe (push / start-server / kill-server ...). Không bao giờ ném lỗi.</summary>
-    public static async Task<(int Code, string Out)> RunAsync(IEnumerable<string> args, int timeoutMs = 60000)
+    /// <summary>
+    /// Chạy adb.exe (push / start-server / kill-server ...). Không bao giờ ném lỗi. Luôn chạy ở luồng nền: Process.Start
+    /// có thể mất vài trăm ms (máy bận, phần mềm diệt virus quét adb.exe) — gọi từ luồng giao diện là cửa sổ đứng hình
+    /// (đã đo: tự kết nối lại WiFi mỗi 20 giây làm cửa sổ đơ 0,3–0,5 giây).
+    /// </summary>
+    public static Task<(int Code, string Out)> RunAsync(IEnumerable<string> args, int timeoutMs = 60000)
     {
         var argList = args.ToList();
+        return Task.Run(() => RunCoreAsync(argList, timeoutMs));
+    }
+
+    static async Task<(int Code, string Out)> RunCoreAsync(List<string> argList, int timeoutMs)
+    {
         if (exiting && argList.FirstOrDefault() != "kill-server") return (1, "ControlPhone is exiting");
-        args = argList;
+        IEnumerable<string> args = argList;
         var psi = new ProcessStartInfo(AdbPath)
         {
             UseShellExecute = false, CreateNoWindow = true,
