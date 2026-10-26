@@ -167,6 +167,49 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// máy không có bộ mã hoá đã chọn: xem scrcpy báo lỗi gì (để tự quay về bộ mã hoá mặc định)
+if (args.Contains("encfail"))
+{
+    var serial = args.SkipWhile(a => a != "encfail").Skip(1).First();
+    var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { MaxSize = 480, MaxFps = 5, PowerOn = false, Encoder = "OMX.khong.ton.tai" });
+    string? ended = null; s.Ended += r => ended = r;
+    try { await s.StartAsync(); Console.WriteLine("kết nối được; chờ 4 giây…"); await Task.Delay(4000); Console.WriteLine($"đã đóng: {s.Closed} ({ended})"); } catch (Exception e) { Console.WriteLine("Lỗi: " + e.Message); }
+    Console.WriteLine(s.LogText);
+    s.Dispose();
+    return 0;
+}
+
+// độ trễ hình: xin keyframe (RESET_VIDEO) rồi đo bao lâu nó về tới PC, theo bộ mã hoá + fps
+// dotnet run -c Release -- latency <serial>
+if (args.Contains("latency"))
+{
+    var serial = args.SkipWhile(a => a != "latency").Skip(1).First();
+    var cfgs = args.Contains("hq") ? new (string?, int, int, int)[] { (null, 30, 4_000_000, 1280), ("OMX.google.h264.encoder", 30, 4_000_000, 1280) } : new (string?, int, int, int)[] { (null, 5, 150_000, 480), ("OMX.google.h264.encoder", 5, 150_000, 480), (null, 30, 1_000_000, 480), ("OMX.google.h264.encoder", 30, 1_000_000, 480) };
+    foreach (var (enc, fps, br, size) in cfgs)
+    {
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { MaxSize = size, BitRate = br, MaxFps = fps, PowerOn = false, Encoder = enc });
+        long keyAt = 0, pkts = 0;
+        s.Packet += (cfg, key, data) => { Interlocked.Increment(ref pkts); if (key) Interlocked.Exchange(ref keyAt, System.Diagnostics.Stopwatch.GetTimestamp()); };
+        string err = "";
+        try { await s.StartAsync(); } catch (Exception e) { err = e.Message; }
+        if (err != "") { Console.WriteLine($"  {enc ?? "mặc định (phần cứng)"} @{fps}fps: KHÔNG CHẠY — {err[..Math.Min(120, err.Length)]}"); continue; }
+        await Task.Delay(2500);
+        var lat = new List<double>();
+        for (int i = 0; i < 6; i++)
+        {
+            Interlocked.Exchange(ref keyAt, 0);
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            s.Send(ControlPhone.Scrcpy.ControlMessages.Empty(ControlPhone.Scrcpy.ControlMessages.ResetVideo));
+            while (Interlocked.Read(ref keyAt) == 0 && System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds < 3000) await Task.Delay(2);
+            var k = Interlocked.Read(ref keyAt);
+            if (k != 0) lat.Add(System.Diagnostics.Stopwatch.GetElapsedTime(t0, k).TotalMilliseconds);
+            await Task.Delay(900);
+        }
+        Console.WriteLine($"  {enc ?? "mặc định (phần cứng)",-26} {size}p @{fps,2}fps: keyframe về sau {(lat.Count > 0 ? $"TB {lat.Average():0} ms, min {lat.Min():0}, max {lat.Max():0}" : "không thấy")} ({lat.Count}/6) · {pkts} gói");
+    }
+    return 0;
+}
+
 // tăng tốc máy đang trỏ chuột (1 máy, không mở luồng lưới các máy khác): dotnet run -c Release -- boost <serial>
 if (args.Contains("boost"))
 {

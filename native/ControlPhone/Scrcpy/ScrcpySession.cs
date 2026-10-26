@@ -17,6 +17,8 @@ public sealed class ScrcpyOptions
     public bool StayAwake { get; init; }
     /// <summary>false = phiên "chỉ điều khiển" (không mã hoá/gửi hình): máy tạm dừng xem / đang phóng to.</summary>
     public bool Video { get; init; } = true;
+    /// <summary>Bộ mã hoá trên điện thoại (null = mặc định của máy, thường là phần cứng).</summary>
+    public string? Encoder { get; init; }
 }
 
 /// <summary>
@@ -100,7 +102,7 @@ public sealed class ScrcpySession : IDisposable
         var scid = Random.Shared.Next(0, int.MaxValue).ToString("x8");
         var o = Options;
         string[] videoArgs = o.Video
-            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}"]
+            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}", .. (o.Encoder != null ? new[] { $"video_encoder={o.Encoder}" } : [])]
             : ["video=false", "send_device_meta=false"];
         string[] args =
         [

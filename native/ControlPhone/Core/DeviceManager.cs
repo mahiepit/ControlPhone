@@ -294,13 +294,21 @@ public sealed class DeviceManager : IDisposable
     /// <summary>Luồng lưới có truyền hình không: không khi tạm dừng xem / bị ẩn, và không khi đang phóng to.</summary>
     static bool ThumbWantsVideo(PhoneDevice d) => !d.Paused && !d.SoloHidden && d.HqRefs == 0;
 
+    const string SwEncoder = "OMX.google.h264.encoder";
+    static string? GridEncoder(PhoneDevice d) => Store.Settings.SoftwareEncoder && !d.NoSwEncoder ? SwEncoder : null;
+
+    /// <summary>Lỗi khởi động do máy không có bộ mã hoá đã chọn → ghi nhớ và dùng bộ mã hoá mặc định.</summary>
+    static bool EncoderMissing(ScrcpySession s, string error) =>
+        s.Options.Encoder != null && (error + "\n" + s.LogText).Contains("encoder", StringComparison.OrdinalIgnoreCase)
+        && (error + "\n" + s.LogText).Contains("not found", StringComparison.OrdinalIgnoreCase);
+
     ScrcpyOptions ThumbOptions(PhoneDevice d)
     {
         var s = Store.Settings;
         return new ScrcpyOptions
         {
             MaxSize = s.ThumbMaxSize, BitRate = s.ThumbBitRate, MaxFps = s.ThumbFps, PowerOn = s.PowerOnConnect,
-            StayAwake = s.ScreenOffOnConnect, Video = ThumbWantsVideo(d),
+            StayAwake = s.ScreenOffOnConnect, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d),
         };
     }
 
@@ -361,6 +369,7 @@ public sealed class DeviceManager : IDisposable
                 await ui.InvokeAsync(() =>
                 {
                     if (d.Thumb != sess) return;
+                    if (EncoderMissing(sess, e.Message)) { d.NoSwEncoder = true; d.RestartDelayMs = 300; return; } // thử lại ngay với bộ mã hoá mặc định
                     d.Error = e.Message;
                     d.StartFails++;
                     d.LastStartError = e.Message;
@@ -422,6 +431,7 @@ public sealed class DeviceManager : IDisposable
         var sess = new ScrcpySession(d.ActiveAddr, new ScrcpyOptions
         {
             MaxSize = s.ThumbMaxSize, BitRate = Math.Max(s.ThumbBitRate, 1_000_000), MaxFps = BoostFps, PowerOn = false, StayAwake = false, Video = true,
+            Encoder = GridEncoder(d),
         });
         d.Boost = sess;
         d.BoostSince = Environment.TickCount64;
@@ -440,11 +450,16 @@ public sealed class DeviceManager : IDisposable
                 ui.BeginInvoke(() => { if (d.Boost == sess) { d.BoostReady = true; dec.Output.MarkDirty(); } });
             }
         };
-        sess.Ended += _ => ui.BeginInvoke(() => { if (d.Boost == sess) ClearBoost(d); });
+        sess.Ended += reason => ui.BeginInvoke(() => { if (EncoderMissing(sess, reason)) d.NoSwEncoder = true; if (d.Boost == sess) ClearBoost(d); });
         _ = Task.Run(async () =>
         {
             try { await sess.StartAsync(cts.Token); }
-            catch { ui.BeginInvoke(() => { if (d.Boost == sess) ClearBoost(d); }); sess.Dispose(); }
+            catch (Exception e)
+            {
+                bool missing = EncoderMissing(sess, e.Message);
+                _ = ui.BeginInvoke(() => { if (missing) d.NoSwEncoder = true; if (d.Boost == sess) ClearBoost(d); });
+                sess.Dispose();
+            }
         });
     }
 
@@ -461,6 +476,8 @@ public sealed class DeviceManager : IDisposable
 
     void OnThumbEnded(PhoneDevice d, ScrcpySession sess, string reason)
     {
+        // server kết nối được rồi mới báo "Video encoder ... not found" và thoát → máy không có bộ mã hoá phần mềm: dùng mặc định
+        if (d.Thumb == sess && EncoderMissing(sess, reason)) { d.NoSwEncoder = true; d.RestartDelayMs = 300; }
         if (d.Thumb == sess)
         {
             d.Thumb = null;

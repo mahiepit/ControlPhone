@@ -89,6 +89,7 @@ public partial class MainWindow : Window
             }
             RenderAll();
             if (SelfTest.On) _ = RunSelfTest();
+            PerfLog.Start(Dispatcher, () => $"ô {PhoneTile.Live.Count} · online {manager.Devices.Count(d => d.IsOnline)} · có hình {manager.Devices.Count(d => d.HasFrame)} · tăng tốc {manager.Devices.Count(d => d.Boost != null)}");
         };
         Closing += OnClosing;
     }
@@ -96,6 +97,14 @@ public partial class MainWindow : Window
     // ---------------- vòng vẽ ----------------
     void OnRender(object? sender, EventArgs e)
     {
+        if (PerfLog.On)
+        {
+            long t0 = Stopwatch.GetTimestamp(); int n = 0;
+            foreach (var t in PhoneTile.Live) if (t.UpdateFrame()) n++;
+            UpdateViewerFrame();
+            PerfLog.AddRender(Stopwatch.GetElapsedTime(t0).TotalMilliseconds, n);
+            return;
+        }
         foreach (var t in PhoneTile.Live) t.UpdateFrame();
         UpdateViewerFrame();
     }
@@ -173,6 +182,13 @@ public partial class MainWindow : Window
     List<PhoneDevice> VisibleDevices() => shown.ToList();
 
     void RenderAll()
+    {
+        long perfT0 = Stopwatch.GetTimestamp();
+        try { RenderAllCore(); }
+        finally { if (PerfLog.On) PerfLog.AddRenderAll(Stopwatch.GetElapsedTime(perfT0).TotalMilliseconds); }
+    }
+
+    void RenderAllCore()
     {
         var sorter = new DeviceSorter(this);
         var list = manager.Devices.Where(MatchFilter).ToList();

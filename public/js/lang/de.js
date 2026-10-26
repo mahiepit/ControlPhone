@@ -552,4 +552,5 @@ export default {
   "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "ADB beim Beenden von ControlPhone stoppen (standardmäßig aus: adb läuft für andere Programme weiter)",
   "Như Xiaowei (480p/2fps)": "Wie Xiaowei (480p/2fps)",
   "Nhẹ (480p/5fps)": "Leicht (480p/5fps)",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "Raster nutzt den Software-Encoder des Telefons (fast keine Bildverzögerung — wie Xiaowei; abwählen für Hardware-Encoder)",
 };

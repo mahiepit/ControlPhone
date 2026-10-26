@@ -11,6 +11,11 @@ public sealed class Settings
     // lưới mặc định nhẹ (Xiaowei chỉ 480p · 2 fps · 50 kbps): 40 máy × 15 fps = 600 khung/giây làm cả app ì
     public int ThumbBitRate { get; set; } = 150_000;
     public int ThumbFps { get; set; } = 5;
+    /// <summary>
+    /// Lưới dùng bộ mã hoá phần mềm OMX.google.h264.encoder (như Xiaowei). Đo trên box A50: bộ mã hoá phần cứng ở 480p/5 fps
+    /// trễ 0,2–1,9 giây (hình chạy sau thao tác), phần mềm chỉ 0,14–0,2 giây. Màn hình lớn vẫn dùng phần cứng (nhanh hơn ở 1280p).
+    /// </summary>
+    public bool SoftwareEncoder { get; set; } = true;
     /// <summary>Phiên bản cài đặt (để chuyển đổi một lần khi đổi mặc định).</summary>
     public int Rev { get; set; }
     public int HqMaxSize { get; set; } = 1280;

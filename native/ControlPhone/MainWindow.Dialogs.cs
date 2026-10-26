@@ -445,6 +445,7 @@ public partial class MainWindow
         importBtn.Margin = new Thickness(6, 0, 0, 0);
         var dataRow = new DockPanel(); DockPanel.SetDock(importBtn, Dock.Right); dataRow.Children.Add(importBtn); dataRow.Children.Add(dataPath);
         d.Body.Children.Add(d.Field("Thư mục dữ liệu (số thứ tự, tên, nhóm máy)", dataRow));
+        var swEnc = d.AddCheck("Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)", s.SoftwareEncoder);
         var screenOff = d.AddCheck("Tự tắt màn hình điện thoại khi kết nối (vẫn xem & điều khiển được, tiết kiệm pin — thoát app màn hình tự bật lại)", s.ScreenOffOnConnect);
         var powerOn = d.AddCheck("Đánh thức điện thoại khi kết nối", s.PowerOnConnect);
         var autoWifi = d.AddCheck("Tự kết nối lại các máy WiFi đã từng kết nối", s.AutoReconnectWifi);
@@ -467,7 +468,7 @@ public partial class MainWindow
         d.AddAction("Lưu", "Primary", () =>
         {
             int I(TextBox tb, int def, int min, int max) => int.TryParse(tb.Text, out var v) ? Math.Clamp(v, min, max) : def;
-            var before = (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect);
+            var before = (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect, s.SoftwareEncoder);
             var beforeHq = (s.HqMaxSize, s.HqBitRate, s.HqFps);
             var prefBefore = s.PreferTransport;
             s.ThumbMaxSize = I(tMax, 480, 160, 1920); s.ThumbBitRate = I(tBr, 150, 30, 20000) * 1000; s.ThumbFps = I(tFps, 5, 1, 60);
@@ -477,9 +478,10 @@ public partial class MainWindow
             s.ScreenshotDir = shotDir.Text.Trim() != "" ? shotDir.Text.Trim() : s.ScreenshotDir;
             s.ScreenOffOnConnect = screenOff.IsChecked == true; s.PowerOnConnect = powerOn.IsChecked == true;
             s.AutoReconnectWifi = autoWifi.IsChecked == true; s.KillAdbOnExit = stopAdb.IsChecked == true; s.AutoPersistKey = autoKey.IsChecked == true;
+            s.SoftwareEncoder = swEnc.IsChecked == true;
             Store.Save();
             manager.ResetStartLimiter();
-            if (before != (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect)) manager.RestartAll();
+            if (before != (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect, s.SoftwareEncoder)) manager.RestartAll();
             else if (beforeHq != (s.HqMaxSize, s.HqBitRate, s.HqFps) && viewerId != null && manager.Get(viewerId) is { } vd) { manager.ReleaseHq(vd); manager.AcquireHq(vd); }
             if (prefBefore != s.PreferTransport) manager.ReapplyTransportPreference();
             Ui.Toast("Đã lưu cài đặt", "ok");

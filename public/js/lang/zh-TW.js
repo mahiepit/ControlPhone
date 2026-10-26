@@ -552,4 +552,5 @@ export default {
   "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "結束 ControlPhone 時關閉 ADB（預設關閉：adb 繼續為使用手機的其他程式執行）",
   "Như Xiaowei (480p/2fps)": "同小微 (480p/2fps)",
   "Nhẹ (480p/5fps)": "輕量 (480p/5fps)",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "格狀檢視使用手機軟體編碼器（畫面幾乎無延遲——同小微；取消勾選則使用硬體編碼器）",
 };

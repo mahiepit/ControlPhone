@@ -122,6 +122,8 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     /// <summary>Khung cho ô lưới: luồng "tăng tốc" (máy đang trỏ chuột, 30 khung/giây) khi đã có hình, ngược lại luồng lưới.</summary>
     public FrameBuffer? Frames => BoostReady && BoostDecoder != null ? BoostDecoder.Output : ThumbDecoder?.Output;
     // luồng tăng tốc cho máy đang được trỏ chuột / điều khiển (lưới chạy thưa cho nhẹ, máy đang thao tác thì mượt)
+    /// <summary>Máy không có bộ mã hoá phần mềm OMX.google → dùng bộ mã hoá mặc định.</summary>
+    internal bool NoSwEncoder;
     internal ScrcpySession? Boost;
     internal H264Decoder? BoostDecoder;
     internal volatile bool BoostReady;

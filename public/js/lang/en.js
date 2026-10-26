@@ -552,4 +552,5 @@ export default {
   "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "Stop ADB when ControlPhone exits (off by default: adb keeps running for other programs using the phones)",
   "Như Xiaowei (480p/2fps)": "Like Xiaowei (480p/2fps)",
   "Nhẹ (480p/5fps)": "Light (480p/5fps)",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "Grid uses the phone's software encoder (almost no image delay — like Xiaowei; untick to use the hardware encoder)",
 };

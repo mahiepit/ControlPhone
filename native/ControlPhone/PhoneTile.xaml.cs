@@ -105,13 +105,13 @@ public partial class PhoneTile : UserControl
     }
 
     /// <summary>Gọi mỗi khung hình màn hình (luồng giao diện): chép khung mới nếu có.</summary>
-    public void UpdateFrame()
+    public bool UpdateFrame()
     {
         var d = Device;
         var fb = d?.Frames;
-        if (fb == null || !PhoneDevice.Live) return;
+        if (fb == null || !PhoneDevice.Live) return false;
         bool resized = false;
-        fb.TryTake((px, w, h) =>
+        bool took = fb.TryTake((px, w, h) =>
         {
             if (bmp == null || bmp.PixelWidth != w || bmp.PixelHeight != h)
             {
@@ -123,6 +123,7 @@ public partial class PhoneTile : UserControl
         });
         if (resized) FitScreen();
         if (bmp != null && !d!.HasFrame) d.HasFrame = true;
+        return took;
     }
 
     /// <summary>Toạ độ chuẩn hoá 0..1 trên màn hình điện thoại (ảnh phủ kín khung màn hình).</summary>

@@ -552,4 +552,5 @@ export default {
   "Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)": "Arrêter ADB à la fermeture de ControlPhone (désactivé par défaut : adb reste actif pour les autres programmes)",
   "Như Xiaowei (480p/2fps)": "Comme Xiaowei (480p/2ips)",
   "Nhẹ (480p/5fps)": "Léger (480p/5ips)",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "La grille utilise l'encodeur logiciel du téléphone (presque aucun retard d'image — comme Xiaowei ; décocher pour l'encodeur matériel)",
 };
