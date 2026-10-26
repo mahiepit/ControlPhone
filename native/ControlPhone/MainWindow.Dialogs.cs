@@ -471,7 +471,7 @@ public partial class MainWindow
             var before = (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect, s.SoftwareEncoder);
             var beforeHq = (s.HqMaxSize, s.HqBitRate, s.HqFps);
             var prefBefore = s.PreferTransport;
-            s.ThumbMaxSize = I(tMax, 480, 160, 1920); s.ThumbBitRate = I(tBr, 300, 30, 20000) * 1000; s.ThumbFps = I(tFps, 10, 1, 60);
+            s.ThumbMaxSize = I(tMax, 480, 160, 1920); s.ThumbBitRate = I(tBr, 600, 30, 20000) * 1000; s.ThumbFps = I(tFps, 15, 1, 60);
             s.HqMaxSize = I(hMax, 1280, 320, 2560); s.HqBitRate = I(hBr, 4000, 500, 40000) * 1000; s.HqFps = I(hFps, 30, 5, 60);
             s.PreferTransport = (string)((ComboBoxItem)pref.SelectedItem).Tag;
             s.MaxParallelStart = I(mps, 6, 1, 30); s.MaxParallelJobs = I(mpj, 10, 1, 50);

@@ -9,8 +9,8 @@ public sealed class Settings
 {
     public int ThumbMaxSize { get; set; } = 480;
     // lưới mặc định nhẹ (Xiaowei chỉ 480p · 2 fps · 50 kbps): 40 máy × 15 fps = 600 khung/giây làm cả app ì
-    public int ThumbBitRate { get; set; } = 300_000;
-    public int ThumbFps { get; set; } = 10;
+    public int ThumbBitRate { get; set; } = 600_000;
+    public int ThumbFps { get; set; } = 15;
     /// <summary>
     /// Lưới dùng bộ mã hoá phần mềm OMX.google.h264.encoder (như Xiaowei). Đo trên box A50: bộ mã hoá phần cứng ở 480p/5 fps
     /// trễ 0,2–1,9 giây (hình chạy sau thao tác), phần mềm chỉ 0,14–0,2 giây. Màn hình lớn vẫn dùng phần cứng (nhanh hơn ở 1280p).
@@ -150,19 +150,13 @@ public static class Store
             try { if (json != null) System.IO.File.WriteAllText(File + $".unreadable-{DateTime.Now:yyyyMMdd-HHmmss}", json); } catch { }
         }
         State.Settings ??= new();
-        // 2.0.11: lưới mặc định cũ 480p · 15 fps · 600 kbps → 480p · 5 fps · 150 kbps (chỉ khi người dùng chưa tự chỉnh)
-        if (State.Settings.Rev < 1)
+        // 2.0.11–2.0.15 từng tự hạ lưới xuống 5 fps/150 kbps rồi 10 fps/300 kbps; người dùng không muốn giảm khung hình
+        // → 2.0.16 trả về mặc định 15 fps / 600 kbps (chỉ khi đang đúng các mức app tự đặt, không đụng mức người dùng chọn)
+        if (State.Settings.Rev < 3)
         {
             var st = State.Settings;
-            if (st.ThumbMaxSize == 480 && st.ThumbBitRate == 600_000 && st.ThumbFps == 15) { st.ThumbBitRate = 300_000; st.ThumbFps = 10; }
-            st.Rev = 2;
-        }
-        // 2.0.14: 5 fps làm máy đang điều khiển đồng bộ trễ thêm ~0,1 giây (đã đo) → mặc định 10 fps
-        if (State.Settings.Rev < 2)
-        {
-            var st = State.Settings;
-            if (st.ThumbMaxSize == 480 && st.ThumbBitRate == 150_000 && st.ThumbFps == 5) { st.ThumbBitRate = 300_000; st.ThumbFps = 10; }
-            st.Rev = 2;
+            if (st.ThumbMaxSize == 480 && ((st.ThumbBitRate == 300_000 && st.ThumbFps == 10) || (st.ThumbBitRate == 150_000 && st.ThumbFps == 5))) { st.ThumbBitRate = 600_000; st.ThumbFps = 15; }
+            st.Rev = 3;
         }
         State.Devices ??= [];
         foreach (var m in State.Devices.Values) m.Groups ??= [];

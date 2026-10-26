@@ -167,6 +167,66 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// gom lô lệnh: chỉ bỏ điểm di chuyển cũ của cùng ngón, không bao giờ bỏ chạm xuống / nhấc lên (dotnet run -c Release -- batch)
+if (args.Contains("batch"))
+{
+    byte[] T(byte act, long pid, int x) => ControlPhone.Scrcpy.ControlMessages.Touch(act, pid, x, 0, 1000, 2000, 1);
+    const byte D = ControlPhone.Scrcpy.ControlMessages.ActionDown, U = ControlPhone.Scrcpy.ControlMessages.ActionUp, M = ControlPhone.Scrcpy.ControlMessages.ActionMove;
+    var list = new List<byte[]> { T(D, 1, 0), T(M, 1, 10), T(M, 1, 20), T(M, 2, 5), ControlPhone.Scrcpy.ControlMessages.Text("a"), T(M, 1, 30), T(U, 1, 30), T(M, 2, 6), T(D, 1, 40), T(M, 1, 50) };
+    var stale = typeof(ControlPhone.Scrcpy.ScrcpySession).GetMethod("IsStaleMove", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    var kept = Enumerable.Range(0, list.Count).Where(i => !(bool)stale.Invoke(null, [list, i])!).ToList();
+    // giữ: DOWN1, MOVE2(5)?→bị thay bởi MOVE2(6) nên bỏ; chữ "a"; MOVE1(30) (ngay trước UP); UP1; MOVE2(6); DOWN1; MOVE1(50)
+    var expect = new List<int> { 0, 4, 5, 6, 7, 8, 9 };
+    Check(kept.SequenceEqual(expect), "Gom lô: chỉ bỏ điểm di chuyển cũ, giữ nguyên chạm/nhấc/chữ và thứ tự", $"giữ {string.Join(",", kept)}");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
+// điều khiển đồng bộ nhiều máy: dội lệnh vào mọi máy cùng lúc, đo bao lâu sau lệnh cuối mới được máy xử lý xong
+// dotnet run -c Release -- ctlflood
+if (args.Contains("ctlflood"))
+{
+    var adbList = new List<AdbDevice>();
+    using (var c0 = new CancellationTokenSource(5000)) { try { await AdbClient.TrackDevicesAsync(l => { adbList = l.ToList(); c0.Cancel(); }, _ => { }, c0.Token); } catch { } }
+    var serials = adbList.Where(x => x.State == "device").Select(x => x.Addr).ToList();
+    var sess = new List<ControlPhone.Scrcpy.ScrcpySession>();
+    await Task.WhenAll(serials.Select(async sr =>
+    {
+        var s = new ControlPhone.Scrcpy.ScrcpySession(sr, new() { Video = false, PowerOn = false });
+        try { await s.StartAsync(); lock (sess) sess.Add(s); } catch { s.Dispose(); }
+    }));
+    Console.WriteLine($"  {sess.Count}/{serials.Count} máy đã mở phiên điều khiển");
+    var noop = ControlPhone.Scrcpy.ControlMessages.Text("");
+    foreach (var s in sess) s.Send(ControlPhone.Scrcpy.ControlMessages.SetClipboardMsg("cp-test", paste: false));
+    await Task.Delay(1000);
+    foreach (var (batch, rate) in new[] { (true, 60), (false, 120), (true, 120), (false, 120), (true, 120), (false, 600), (true, 600), (false, 600), (true, 600) })
+    {
+        ControlPhone.Scrcpy.ScrcpySession.BatchWrites = batch;
+        await Task.Delay(500);
+        long w0 = sess.Sum(s => s.ControlWrites);
+        var swF = System.Diagnostics.Stopwatch.StartNew(); long sent = 0;
+        while (swF.Elapsed.TotalSeconds < 4)
+        {
+            long due = (long)(swF.Elapsed.TotalSeconds * rate);
+            for (; sent < due; sent++) foreach (var s in sess) s.Send(noop);
+            await Task.Delay(1);
+        }
+        // máy nào trả clipboard nghĩa là đã xử lý xong MỌI lệnh trước đó (scrcpy xử lý tuần tự)
+        var replies = new System.Collections.Concurrent.ConcurrentDictionary<ControlPhone.Scrcpy.ScrcpySession, double>();
+        var t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        var handlers = sess.Select(s => { Action<string> h = _ => replies.TryAdd(s, System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds); s.ClipboardReceived += h; return (s, h); }).ToList();
+        foreach (var s in sess) s.Send(ControlPhone.Scrcpy.ControlMessages.GetClipboardMsg(0));
+        var wait = System.Diagnostics.Stopwatch.StartNew();
+        while (replies.Count < sess.Count && wait.Elapsed.TotalSeconds < 20) await Task.Delay(5);
+        foreach (var (s, h) in handlers) s.ClipboardReceived -= h;
+        var v = replies.Values.ToList();
+        Console.WriteLine($"  {(batch ? "GOM LÔ (mới)" : "từng lệnh (cũ)"),-15} {rate,4} lệnh/giây/máy × {sess.Count} máy: lệnh cuối xong sau TB {(v.Count > 0 ? v.Average() : 0):0} ms, chậm nhất {(v.Count > 0 ? v.Max() : 0):0} ms · {replies.Count}/{sess.Count} máy trả lời · {sess.Sum(s => s.ControlWrites) - w0} lần ghi");
+        await Task.Delay(1500);
+    }
+    foreach (var s in sess) s.Dispose();
+    return 0;
+}
+
 // máy vừa khởi động lại: mở phiên nhiều lần với stay_awake bật / tắt, đếm số lần server chết
 // dotnet run -c Release -- bootstart <serial> [số vòng]
 if (args.Contains("bootstart"))

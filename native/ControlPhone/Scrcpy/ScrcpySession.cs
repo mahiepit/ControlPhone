@@ -296,18 +296,57 @@ public sealed class ScrcpySession : IDisposable
         return true;
     }
 
-    readonly Channel<byte[]> sendQ = Channel.CreateBounded<byte[]>(
-        new BoundedChannelOptions(1024) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
+    // không giới hạn và KHÔNG BAO GIỜ bỏ lệnh chạm/phím/chữ (trước đây hàng đầy là bỏ → mất thao tác khi điều khiển nhiều máy)
+    readonly Channel<byte[]> sendQ = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
 
+    /// <summary>Chỉ để đo so sánh (CoreTest): false = ghi từng lệnh một như bản cũ.</summary>
+    public static bool BatchWrites = true;
+
+    /// <summary>
+    /// Ghi lệnh điều khiển xuống máy. Mỗi lần ghi là 1 gói adb và adb phải chờ máy xác nhận gói trước — điều khiển đồng bộ
+    /// 100 máy × ~120 lần di chuột/giây = 12.000 gói/giây, đường USB bận là lệnh dồn lại (trễ). Nên: gom mọi lệnh đang chờ
+    /// thành MỘT lần ghi, và trong lô đó bỏ các điểm "di chuyển" đã cũ của cùng một ngón (chỉ giữ điểm mới nhất trước lệnh
+    /// tiếp theo của ngón đó). Chạm xuống / nhấc lên / phím / chữ luôn được giữ nguyên thứ tự.
+    /// </summary>
     async Task WriterLoop()
     {
+        var batch = new List<byte[]>(64);
+        var buf = new MemoryStream(4096);
         try
         {
             var r = sendQ.Reader;
             while (await r.WaitToReadAsync().ConfigureAwait(false))
-                while (r.TryRead(out var m)) await control!.WriteAsync(m).ConfigureAwait(false);
+            {
+                if (!BatchWrites) { while (r.TryRead(out var one)) await control!.WriteAsync(one).ConfigureAwait(false); continue; }
+                batch.Clear();
+                while (batch.Count < 1024 && r.TryRead(out var m)) batch.Add(m);
+                buf.SetLength(0);
+                for (int i = 0; i < batch.Count; i++)
+                    if (!IsStaleMove(batch, i)) buf.Write(batch[i]);
+                await control!.WriteAsync(buf.GetBuffer().AsMemory(0, (int)buf.Length)).ConfigureAwait(false);
+                Interlocked.Add(ref ControlWrites, 1);
+            }
         }
         catch { Close("control đóng"); }
+    }
+
+    /// <summary>Số lần ghi điều khiển (đo).</summary>
+    public long ControlWrites;
+
+    static bool IsTouch(byte[] m) => m.Length == 32 && m[0] == ControlMessages.InjectTouch;
+
+    /// <summary>Điểm di chuyển mà ngay sau đó (trong cùng lô) cùng ngón đó còn một điểm di chuyển mới hơn → bỏ được.</summary>
+    static bool IsStaleMove(List<byte[]> b, int i)
+    {
+        var m = b[i];
+        if (!IsTouch(m) || m[1] != ControlMessages.ActionMove) return false;
+        var pid = m.AsSpan(2, 8);
+        for (int j = i + 1; j < b.Count; j++)
+        {
+            var n = b[j];
+            if (IsTouch(n) && n.AsSpan(2, 8).SequenceEqual(pid)) return n[1] == ControlMessages.ActionMove;
+        }
+        return false;
     }
 
     public void RequestKeyFrame()
