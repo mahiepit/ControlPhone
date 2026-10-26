@@ -554,4 +554,5 @@ export default {
   "Nhẹ (480p/5fps)": "Léger (480p/5ips)",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "La grille utilise l'encodeur logiciel du téléphone (presque aucun retard d'image — comme Xiaowei ; décocher pour l'encodeur matériel)",
   "Nhẹ (480p/10fps)": "Léger (480p/10ips)",
+  "Máy đang khởi động… (chờ Android chạy xong rồi tự kết nối)": "Le téléphone démarre… (connexion automatique dès qu'Android est prêt)",
 };

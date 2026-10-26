@@ -554,4 +554,5 @@ export default {
   "Nhẹ (480p/5fps)": "Leicht (480p/5fps)",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "Raster nutzt den Software-Encoder des Telefons (fast keine Bildverzögerung — wie Xiaowei; abwählen für Hardware-Encoder)",
   "Nhẹ (480p/10fps)": "Leicht (480p/10fps)",
+  "Máy đang khởi động… (chờ Android chạy xong rồi tự kết nối)": "Telefon startet… (verbindet sich automatisch, sobald Android läuft)",
 };

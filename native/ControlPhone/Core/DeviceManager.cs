@@ -109,6 +109,7 @@ public sealed class DeviceManager : IDisposable
     async Task ProbeAsync(string addr)
     {
         probing.Add(addr);
+        bool booting = false;
         try
         {
             string text = "";
@@ -121,16 +122,20 @@ public sealed class DeviceManager : IDisposable
                 {
                     try
                     {
-                        text = await AdbClient.ShellAsync(addr, "getprop ro.serialno; getprop ro.product.model; getprop ro.product.manufacturer; getprop ro.build.version.release; getprop ro.build.version.sdk; echo \"SU=$(which su 2>/dev/null)\"; echo \"UID=$(id -u)\"", 20000, cts.Token);
+                        text = await AdbClient.ShellAsync(addr, "getprop ro.serialno; getprop ro.product.model; getprop ro.product.manufacturer; getprop ro.build.version.release; getprop ro.build.version.sdk; echo \"SU=$(which su 2>/dev/null)\"; echo \"UID=$(id -u)\"; echo \"BOOT=$(getprop sys.boot_completed)\"", 20000, cts.Token);
                     }
                     catch (Exception e) when (!cts.IsCancellationRequested) { lastErr = e; await Task.Delay(1500, cts.Token); }
                 }
                 if (text == "") throw lastErr ?? new Exception("không đọc được thông tin");
+                // adb có mặt rất sớm khi máy khởi động lại, trước khi Android chạy xong: mở luồng lúc đó là scrcpy-server chết
+                // (dịch vụ hệ thống chưa có). Chờ máy khởi động xong rồi mới nhận.
+                booting = text.Contains("BOOT=") && !text.Contains("BOOT=1");
                 // Android ID đọc riêng: nếu chậm/lỗi vẫn nhận máy bình thường
-                try { text += await AdbClient.ShellAsync(addr, "echo \"AID=$(settings get secure android_id 2>/dev/null)\"", 15000, cts.Token); } catch { }
+                if (!booting) try { text += await AdbClient.ShellAsync(addr, "echo \"AID=$(settings get secure android_id 2>/dev/null)\"", 15000, cts.Token); } catch { }
             }
             finally { probeLimiter.Release(); }
             if (serialStates.GetValueOrDefault(addr) != "device") return;
+            if (booting) { ShowBooting(addr); return; }
             using var _op = StallWatch.Op("nhận máy (sau khi đọc thông tin)");
             ClearProbeError(addr);
             var lines = text.Split('\n').Select(s => s.Trim()).ToArray();
@@ -154,6 +159,9 @@ public sealed class DeviceManager : IDisposable
                 _ = Task.Run(async () => { var r = await AdbClient.PersistAdbKeyAsync(addr); if (r.Ok) ui.Invoke(() => { meta.KeyPushed = true; Store.Save(); }); });
             // chế độ "chỉ nhập từ PC": bàn phím có thể bị đổi khi máy khởi động lại → chọn lại
             if (meta.PcKeyboard) _ = Task.Run(async () => { try { await PcKeyboard.EnsureAsync(addr); } catch { } });
+            // tắt màn hình thật khi kết nối → máy phải thức khi cắm sạc (thay cho stay_awake của scrcpy); chỉ đổi khi đang tắt
+            if (Store.Settings.ScreenOffOnConnect)
+                _ = Task.Run(async () => { try { await AdbClient.ShellAsync(addr, "[ \"$(settings get global stay_on_while_plugged_in)\" = 0 ] && settings put global stay_on_while_plugged_in 7; true", 10000); } catch { } });
             ChooseTransport(d);
             RefreshInfo(d);
             Changed(d);
@@ -161,6 +169,29 @@ public sealed class DeviceManager : IDisposable
         catch (OperationCanceledException) { }
         catch (Exception e) { SetProbeError(addr, e.Message); }
         finally { probing.Remove(addr); }
+    }
+
+    /// <summary>Máy đang khởi động (adb đã có nhưng Android chưa chạy xong): hiện ô "Đang khởi động…", hỏi lại sau 3 giây.</summary>
+    void ShowBooting(string addr)
+    {
+        var pid = "pending:" + addr;
+        if (!byId.TryGetValue(pid, out var d))
+        {
+            d = new PhoneDevice(pid) { Pending = true, ActiveAddr = addr, Model = addr };
+            d.Transports[addr] = AdbClient.IsWifiSerial(addr) ? "wifi" : "usb";
+            Add(d);
+        }
+        d.Status = "error"; // giữ ô khi adb vẫn báo "device" (xem OnTrack)
+        d.Error = "Máy đang khởi động… (chờ Android chạy xong rồi tự kết nối)";
+        Changed(d);
+        d.RestartCts?.Cancel();
+        d.RestartCts = new CancellationTokenSource();
+        var tok = d.RestartCts.Token;
+        _ = Task.Delay(3000, tok).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            ui.BeginInvoke(() => { if (serialStates.GetValueOrDefault(addr) == "device" && !serialToId.ContainsKey(addr) && !probing.Contains(addr)) _ = ProbeAsync(addr); });
+        }, TaskScheduler.Default);
     }
 
     // Máy chưa đọc được thông tin: hiện ô báo lỗi (không bao giờ bỏ máy im lặng) và tự thử lại
@@ -309,8 +340,11 @@ public sealed class DeviceManager : IDisposable
         var s = Store.Settings;
         return new ScrcpyOptions
         {
+            // KHÔNG dùng stay_awake của scrcpy: nó bắt bước dọn dẹp (CleanUp) của server đọc/ghi cài đặt qua API ẩn — ngay sau
+            // khi máy khởi động lại API đó chưa sẵn sàng → server chết (NullPointerException) → máy vừa reboot không vào được.
+            // Giữ máy thức bằng lệnh settings thường (EnsureStayOn) thay thế.
             MaxSize = s.ThumbMaxSize, BitRate = s.ThumbBitRate, MaxFps = s.ThumbFps, PowerOn = s.PowerOnConnect,
-            StayAwake = s.ScreenOffOnConnect, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d),
+            StayAwake = false, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d),
         };
     }
 
@@ -350,9 +384,14 @@ public sealed class DeviceManager : IDisposable
         {
             try
             {
-                await startLimiter.WaitAsync(cts.Token);
-                try { if (!sess.Closed) await sess.StartAsync(cts.Token); }
-                finally { startLimiter.Release(); }
+                // giới hạn số máy khởi động cùng lúc, nhưng nhả chỗ ngay khi server đã được chạy trên máy: phần chờ server
+                // mở kết nối (máy vừa reboot có thể chậm tới vài chục giây) không được giữ chỗ của các máy khác
+                var lim = startLimiter;
+                await lim.WaitAsync(cts.Token);
+                int released = 0;
+                void Release() { if (Interlocked.Exchange(ref released, 1) == 0) lim.Release(); }
+                try { if (!sess.Closed) await sess.StartAsync(cts.Token, Release); }
+                finally { Release(); }
                 await ui.InvokeAsync(() =>
                 {
                     if (d.Thumb != sess) return;
@@ -376,8 +415,9 @@ public sealed class DeviceManager : IDisposable
                     d.Error = e.Message;
                     d.StartFails++;
                     d.LastStartError = e.Message;
-                    // lỗi lặp lại (vd. server không chạy được trên ROM này): giữ báo lỗi trên ô, thử lại thưa (1 phút/lần)
-                    if (d.StartFails >= 3) d.RestartDelayMs = 60000;
+                    // lỗi lặp lại: giữ báo lỗi trên ô và thử thưa dần — 5, 10, 15… tối đa 30 giây (máy vừa khởi động lại thường
+                    // chỉ cần thêm vài giây; trước đây chờ hẳn 1 phút sau 3 lần lỗi nên máy reboot xong rất lâu mới điều khiển được)
+                    if (d.StartFails >= 3) d.RestartDelayMs = Math.Min(5000 * (d.StartFails - 2), 30000);
                     Changed(d);
                 });
                 WriteStartLog(d, sess, e.Message);

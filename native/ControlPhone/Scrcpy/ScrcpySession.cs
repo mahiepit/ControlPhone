@@ -95,7 +95,8 @@ public sealed class ScrcpySession : IDisposable
     public string LogText { get { lock (logTail) return $"$ {commandLine}\n{string.Join("\n", logTail)}"; } }
     string commandLine = "";
 
-    public async Task StartAsync(CancellationToken ct = default)
+    /// <param name="onLaunched">gọi ngay khi server đã được chạy trên máy (trước khi chờ server mở kết nối)</param>
+    public async Task StartAsync(CancellationToken ct = default, Action? onLaunched = null)
     {
         await EnsureServerPushedAsync(Addr).ConfigureAwait(false);
         if (Closed) throw new ObjectDisposedException("session");
@@ -119,6 +120,7 @@ public sealed class ScrcpySession : IDisposable
         commandLine = cmd;
         // adb server dùng chung có lúc rất chậm (nhiều chương trình cùng dùng) → chờ tới 30 giây thay vì báo lỗi rồi thử lại
         shellSock = await AdbClient.OpenServiceAsync(Addr, "shell:" + cmd, 30000, ct).ConfigureAwait(false);
+        onLaunched?.Invoke();
         _ = Task.Run(ReadShellLog);
 
         var socketName = "localabstract:scrcpy_" + scid;

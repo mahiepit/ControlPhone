@@ -554,4 +554,5 @@ export default {
   "Nhẹ (480p/5fps)": "輕量 (480p/5fps)",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)": "格狀檢視使用手機軟體編碼器（畫面幾乎無延遲——同小微；取消勾選則使用硬體編碼器）",
   "Nhẹ (480p/10fps)": "輕量 (480p/10fps)",
+  "Máy đang khởi động… (chờ Android chạy xong rồi tự kết nối)": "手機正在啟動…（Android 啟動完成後自動連線）",
 };

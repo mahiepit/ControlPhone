@@ -167,6 +167,30 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// máy vừa khởi động lại: mở phiên nhiều lần với stay_awake bật / tắt, đếm số lần server chết
+// dotnet run -c Release -- bootstart <serial> [số vòng]
+if (args.Contains("bootstart"))
+{
+    var a2 = args.SkipWhile(a => a != "bootstart").Skip(1).ToArray();
+    var serial = a2[0]; int rounds = a2.Length > 1 ? int.Parse(a2[1]) : 4;
+    var up = (await AdbClient.ShellAsync(serial, "cut -d. -f1 /proc/uptime", 8000)).Trim();
+    Console.WriteLine($"  máy đã chạy {up} giây kể từ khi khởi động");
+    foreach (var stay in new[] { true, false })
+    {
+        int ok = 0, dead = 0; string lastErr = "";
+        for (int i = 0; i < rounds; i++)
+        {
+            var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { MaxSize = 480, BitRate = 300_000, MaxFps = 10, PowerOn = true, StayAwake = stay, Encoder = "OMX.google.h264.encoder" });
+            try { await s.StartAsync(); await Task.Delay(2500); if (s.Running) ok++; else { dead++; lastErr = s.LogText.Split('\n').FirstOrDefault(l => l.Contains("ERROR")) ?? "đóng"; } }
+            catch (Exception e) { dead++; lastErr = e.Message; }
+            s.Dispose();
+            await Task.Delay(500);
+        }
+        Console.WriteLine($"  stay_awake={(stay ? "bật (cách cũ)" : "tắt (cách mới)"),-14}: {ok}/{rounds} chạy được, {dead} lần chết{(lastErr != "" ? " — " + lastErr[..Math.Min(110, lastErr.Length)] : "")}");
+    }
+    return 0;
+}
+
 // bộ phát hiện đứng hình: chặn luồng giao diện 400 ms trong 1 việc có đánh dấu → phải ghi lại đúng tên việc
 if (args.Contains("stall"))
 {
