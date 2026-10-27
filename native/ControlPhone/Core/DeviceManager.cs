@@ -61,10 +61,20 @@ public sealed class DeviceManager : IDisposable
     void Changed(PhoneDevice d) { d.Changed(); ListChanged?.Invoke(); }
 
     // ---------- theo dõi adb ----------
+    /// <summary>
+    /// Chế độ "Chỉ hiển thị 1 điện thoại": serial USB / địa chỉ của máy được chọn. Khác null thì mọi máy khác bị bỏ qua hoàn
+    /// toàn (không đọc thông tin, không mở luồng) — chỉ tập trung 1 máy.
+    /// </summary>
+    public static string? SingleAddr { get; set; }
+
+    static bool IsSingleTarget(string addr) =>
+        SingleAddr == null || addr == SingleAddr || AdbClient.SplitAddr(addr).Serial == AdbClient.SplitAddr(SingleAddr).Serial;
+
     void OnTrack(IReadOnlyList<AdbDevice> list)
     {
         using var _op = StallWatch.Op("adb: danh sách máy thay đổi");
         if (stopping) return;
+        if (SingleAddr != null) list = list.Where(x => IsSingleTarget(x.Addr)).ToList();
         lastTrack = list;
         var seen = list.ToDictionary(x => x.Addr, x => x.State);
         // serial biến mất hoặc không còn ở trạng thái device
@@ -325,7 +335,7 @@ public sealed class DeviceManager : IDisposable
 
     // ---------- phiên scrcpy ----------
     /// <summary>Luồng lưới có truyền hình không: không khi tạm dừng xem / bị ẩn, và không khi đang phóng to.</summary>
-    static bool ThumbWantsVideo(PhoneDevice d) => !d.Paused && !d.SoloHidden && d.HqRefs == 0;
+    static bool ThumbWantsVideo(PhoneDevice d) => SingleAddr == null && !d.Paused && !d.SoloHidden && d.HqRefs == 0; // 1 máy: chỉ luồng nét của màn hình lớn
 
     const string SwEncoder = "OMX.google.h264.encoder";
     static string? GridEncoder(PhoneDevice d) => Store.Settings.SoftwareEncoder && !d.NoSwEncoder ? SwEncoder : null;
@@ -745,7 +755,7 @@ public sealed class DeviceManager : IDisposable
     // ---------- WiFi ----------
     async Task AutoReconnectWifiAsync()
     {
-        if (!Store.Settings.AutoReconnectWifi || stopping) return;
+        if (!Store.Settings.AutoReconnectWifi || stopping || SingleAddr != null) return;
         var targets = new List<string>();
         long now = Environment.TickCount64;
         foreach (var (id, meta) in Store.State.Devices)

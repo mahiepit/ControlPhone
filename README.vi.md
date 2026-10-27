@@ -69,6 +69,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 **Kết nối**
 - **USB** — nhận máy ngay khi cắm.
 - **WiFi** — USB → WiFi bằng 1 nút (và WiFi → USB để chuyển lại), kết nối theo IP, quét mạng LAN, ghép nối mã (Android 11+). Máy có cả USB và WiFi chỉ hiện 1 ô và tự chuyển khi mất kết nối; máy WiFi tự kết nối lại.
+- **2 chế độ khi mở app (ControlPhone 2.1+)** — *Điều khiển tất cả máy* (cả dàn, lưới + đồng bộ) hoặc *Chỉ hiển thị 1 điện thoại*: chọn 1 máy trong danh sách, ControlPhone chỉ kết nối máy đó và hiện màn hình lớn — mượt nhất khi làm việc với 1 máy. Đổi chế độ bất cứ lúc nào trên thanh trên cùng.
 - **Root** — tự nhận; shell root, bật ADB WiFi cố định, và tự cấy khoá ADB của máy tính vào `/data/misc/adb/adb_keys` để máy root không bao giờ hỏi "Cho phép gỡ lỗi USB" lại (rất hợp cho box phone không màn hình).
 - **OTG** — mở `scrcpy --otg` (bàn phím/chuột qua USB, không cần Gỡ lỗi USB).
 - Mở cửa sổ scrcpy gốc cho từng máy khi cần.

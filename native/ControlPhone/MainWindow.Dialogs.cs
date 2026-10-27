@@ -374,7 +374,7 @@ public partial class MainWindow
         }
         catch (Exception e) { Ui.Toast(T("Không nhập được dữ liệu: {0}", e.Message), "err", 8000); return; }
         owner.Close();
-        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--restart") { UseShellExecute = false });
+        App.RestartIn(ModeArgs);
         Close();
     }
 

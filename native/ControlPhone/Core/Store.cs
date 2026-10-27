@@ -87,6 +87,8 @@ public sealed class UiPrefs
     public string PushDir { get; set; } = "/sdcard/Download/";
     public string FilesPath { get; set; } = "/sdcard/";
     public List<string> Selected { get; set; } = [];
+    /// <summary>Máy chọn gần nhất ở chế độ "Chỉ hiển thị 1 điện thoại" (đưa lên đầu danh sách).</summary>
+    public string LastSingle { get; set; } = "";
 }
 
 /// <summary>Lưu trữ dùng chung với bản web: data/config.json. Ghi trễ 300 ms, ghi qua tệp tạm.</summary>

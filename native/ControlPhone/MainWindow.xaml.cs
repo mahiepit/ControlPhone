@@ -42,8 +42,16 @@ public partial class MainWindow : Window
 
     static string T(string s, params object[] a) => I18n.T(s, a);
 
-    public MainWindow()
+    /// <summary>Chế độ "Chỉ hiển thị 1 điện thoại": serial / địa chỉ máy được chọn; null = điều khiển tất cả máy.</summary>
+    readonly string? single;
+
+    /// <summary>Tham số để khởi động lại app mà vẫn giữ chế độ hiện tại.</summary>
+    string ModeArgs => single != null ? "single " + single : "all";
+
+    public MainWindow(string? single = null)
     {
+        this.single = single;
+        DeviceManager.SingleAddr = single;
         InitializeComponent();
         Ui.DarkTitleBar(this);
         if (SelfTest.On) { WindowState = WindowState.Normal; Left = -20000; Top = 0; Width = 1700; Height = 1000; ShowActivated = false; ShowInTaskbar = false; }
@@ -68,6 +76,7 @@ public partial class MainWindow : Window
         InitViewer();
         InitInput();
         InitToasts();
+        ApplyModeUi();
 
         Loaded += (_, _) =>
         {
@@ -202,6 +211,7 @@ public partial class MainWindow : Window
         UpdateSoloUi();
         UpdateEmpty();
         if (viewerId != null) { if (manager.Get(viewerId) == null) CloseViewer(); else UpdateViewerHead(); }
+        UpdateSingleMode();
     }
 
     void UpdateEmpty()
@@ -330,7 +340,7 @@ public partial class MainWindow : Window
             var code = (string)((ComboBoxItem)LangSel.SelectedItem).Tag;
             if (code == I18n.Lang) return;
             Store.Ui.Lang = code; Store.FlushUi();
-            Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--restart") { UseShellExecute = false });
+            App.RestartIn(ModeArgs);
             Close();
         };
         BtnTheme.Click += (_, _) => { Theme.Apply(Theme.Current == "light" ? "dark" : "light"); Store.Ui.Theme = Theme.Current; Store.SaveUi(); UpdateThemeIcon(); UpdateSyncUi(); Ui.DarkTitleBar(this); };

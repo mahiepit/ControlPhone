@@ -69,6 +69,7 @@ UI languages: English · Tiếng Việt · 简体中文 · 繁體中文 · Deuts
 **Connections**
 - **USB** — detected instantly.
 - **Wi-Fi** — USB → Wi-Fi in one click (and Wi-Fi → USB to switch back), connect by IP, LAN scan, Android 11+ pairing code. A phone connected by both USB and Wi-Fi appears once and fails over automatically; Wi-Fi phones reconnect automatically.
+- **Two modes on launch (ControlPhone 2.1+)** — *Control All Devices* (the whole set of phones, grid + sync) or *Show only 1 phone*: pick a phone from the list and ControlPhone connects only to that phone and shows it large — the smoothest way to work on one phone. Switch any time from the top bar.
 - **Root** — detected automatically; root shell, permanent ADB over Wi-Fi, and auto-installs this PC's ADB key into `/data/misc/adb/adb_keys` so rooted phones never ask "Allow USB debugging?" again (ideal for screenless box phones).
 - **OTG** — launches `scrcpy --otg` (keyboard/mouse over USB without USB debugging).
 - Native scrcpy window for any phone as a fallback.

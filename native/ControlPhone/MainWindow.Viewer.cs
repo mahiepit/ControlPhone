@@ -153,7 +153,7 @@ public partial class MainWindow
         if (viewerId == null) return;
         double w = vBmp?.PixelWidth ?? 9, h = vBmp?.PixelHeight ?? 18.5;
         double availH = ActualHeight - 48 - 46 - 44 - 60;
-        double maxW = Math.Max(240, ActualWidth * 0.5);
+        double maxW = single != null ? Math.Max(240, ActualWidth - 160) : Math.Max(240, ActualWidth * 0.5); // 1 máy: màn hình lớn chiếm cả cửa sổ
         double H = Math.Max(200, availH), W = H * w / h;
         if (W > maxW) { W = maxW; H = W * h / w; }
         VScreen.Width = Math.Round(W);
@@ -176,7 +176,7 @@ public partial class MainWindow
             vBmp.WritePixels(new Int32Rect(0, 0, w, h), px, w * 4, 0);
         });
         if (resized) LayoutViewer();
-        if (vBmp != null && VOv.Visibility == Visibility.Visible) VOv.Visibility = Visibility.Collapsed;
+        if (vBmp != null && VOv.Visibility == Visibility.Visible && (single == null || ViewerDev?.IsOnline == true)) VOv.Visibility = Visibility.Collapsed;
     }
 
     async Task ViewerTool(string act, Button b)

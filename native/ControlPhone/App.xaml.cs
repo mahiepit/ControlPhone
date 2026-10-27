@@ -41,8 +41,29 @@ public partial class App : Application
         I18n.Init(Store.Ui.Lang);
         Theme.Apply(Store.Ui.Theme);
         base.OnStartup(e);
-        new MainWindow().Show();
+        // chọn chế độ: điều khiển tất cả máy / chỉ 1 điện thoại. "--mode all|pick|single <addr>" khi app tự khởi động lại.
+        string? singleAddr = null;
+        var args = e.Args.ToList();
+        int mi = args.IndexOf("--mode");
+        string mode = mi >= 0 && mi + 1 < args.Count ? args[mi + 1] : SelfTest.On ? "all" : "ask";
+        if (mode == "single" && mi + 2 < args.Count) singleAddr = args[mi + 2];
+        else if (mode is "ask" or "pick")
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown; // đóng cửa sổ chọn chế độ không được thoát app
+            var mw = new ModeWindow(startWithList: mode == "pick");
+            mw.ShowDialog();
+            if (!mw.Chosen) { Shutdown(); return; }
+            singleAddr = mw.SingleAddr;
+        }
+        var main = new MainWindow(singleAddr);
+        MainWindow = main;
+        ShutdownMode = ShutdownMode.OnMainWindowClose;
+        main.Show();
     }
+
+    /// <summary>Khởi động lại app ở chế độ khác (đóng cửa sổ hiện tại sau khi gọi).</summary>
+    public static void RestartIn(string modeArgs) =>
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, "--restart --mode " + modeArgs) { UseShellExecute = false });
 
     /// <summary>
     /// Lần đầu chạy bản mới ở thư mục mới (chưa có data): tìm dữ liệu của bản cũ và hỏi có dùng không — để không mất

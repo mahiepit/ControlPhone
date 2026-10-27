@@ -167,6 +167,89 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// chụp màn hình chọn chế độ (ngoài màn hình, không hiện cho người dùng): dotnet run -c Release -- modeshot <thư mục>
+if (args.Contains("modeshot"))
+{
+    var dir = args.SkipWhile(a => a != "modeshot").Skip(1).First();
+    Directory.CreateDirectory(dir);
+    UiDo(() => { Store.Load(); I18n.Init("vi"); var app = new ControlPhone.App(); app.InitializeComponent(); ControlPhone.Theme.Apply("dark"); });
+    async Task Shot(ControlPhone.ModeWindow w, string name, int waitMs)
+    {
+        UiDo(() => { w.Left = -20000; w.Top = 0; w.ShowActivated = false; w.ShowInTaskbar = false; w.Show(); });
+        await Task.Delay(waitMs);
+        UiDo(() =>
+        {
+            var el = (System.Windows.FrameworkElement)w.Content;
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)el.ActualWidth, (int)el.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var bg = new System.Windows.Controls.Border { Background = w.Background, Width = el.ActualWidth, Height = el.ActualHeight };
+            bg.Measure(new System.Windows.Size(el.ActualWidth, el.ActualHeight)); bg.Arrange(new System.Windows.Rect(0, 0, el.ActualWidth, el.ActualHeight));
+            rtb.Render(bg); rtb.Render(el);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+            using var fs = File.Create(Path.Combine(dir, name)); enc.Save(fs);
+            w.Close();
+        });
+    }
+    if (args.Contains("singleshot"))
+    {
+        var serial = args.SkipWhile(a => a != "singleshot").Skip(1).First();
+        var mwin = Ui(() => { var w = new ControlPhone.MainWindow(serial) { WindowState = System.Windows.WindowState.Normal, Left = -20000, Top = 0, Width = 1400, Height = 900, ShowActivated = false, ShowInTaskbar = false }; w.Show(); return w; });
+        await Task.Delay(12000);
+        UiDo(() =>
+        {
+            var el = (System.Windows.FrameworkElement)mwin.Content;
+            var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap((int)el.ActualWidth, (int)el.ActualHeight, 96, 96, System.Windows.Media.PixelFormats.Pbgra32);
+            var bg = new System.Windows.Controls.Border { Background = mwin.Background, Width = el.ActualWidth, Height = el.ActualHeight };
+            bg.Measure(new System.Windows.Size(el.ActualWidth, el.ActualHeight)); bg.Arrange(new System.Windows.Rect(0, 0, el.ActualWidth, el.ActualHeight));
+            rtb.Render(bg); rtb.Render(el);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder(); enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(rtb));
+            using var fs = File.Create(Path.Combine(dir, "mode-3-single.png")); enc.Save(fs);
+            mwin.Close();
+        });
+        await Task.Delay(3000);
+        return 0;
+    }
+    await Shot(Ui(() => new ControlPhone.ModeWindow()), "mode-1-choices.png", 800);
+    await Shot(Ui(() => new ControlPhone.ModeWindow(startWithList: true)), "mode-2-list.png", 6000);
+    Console.WriteLine("đã chụp vào " + dir);
+    return 0;
+}
+
+// chế độ "Chỉ hiển thị 1 điện thoại": chỉ máy đó được nhận + mở luồng, không đụng máy khác (dotnet run -c Release -- single <serial>)
+if (args.Contains("single"))
+{
+    var serial = args.SkipWhile(a => a != "single").Skip(1).First();
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    // giao diện: dựng cửa sổ chính ở chế độ 1 máy (không hiện) + màn hình chọn chế độ
+    UiDo(() =>
+    {
+        var app = new ControlPhone.App(); app.InitializeComponent();
+        var w = new ControlPhone.MainWindow(serial);
+        bool gridHidden = (w.FindName("GridArea") as System.Windows.FrameworkElement)?.Parent is System.Windows.FrameworkElement m && m.Visibility == System.Windows.Visibility.Collapsed;
+        bool viewer = (w.FindName("ViewerPane") as System.Windows.FrameworkElement)?.Visibility == System.Windows.Visibility.Visible;
+        bool sidebar = (w.FindName("Sidebar") as System.Windows.FrameworkElement)?.Visibility == System.Windows.Visibility.Collapsed;
+        bool btns = (w.FindName("BtnAllMode") as System.Windows.FrameworkElement)?.Visibility == System.Windows.Visibility.Visible && (w.FindName("BtnSingleMode") as System.Windows.FrameworkElement)?.Visibility == System.Windows.Visibility.Collapsed;
+        Check(gridHidden && viewer && sidebar && btns, "Cửa sổ 1 máy: ẩn lưới + thanh bên, hiện màn hình lớn, có nút Điều khiển tất cả", $"lưới ẩn={gridHidden} màn lớn={viewer} thanh bên ẩn={sidebar} nút={btns}");
+        w.Close();
+        var mw = new ControlPhone.ModeWindow();
+        Check(mw.Content is System.Windows.Controls.Grid g && g.Children.Count == 1, "Dựng màn hình chọn chế độ");
+        mw.Close();
+    });
+    // lõi: chỉ nhận đúng máy đã chọn
+    DeviceManager.SingleAddr = serial;
+    var mgrS = Ui(() => new DeviceManager(ui!));
+    UiDo(() => mgrS.Start());
+    var swS = System.Diagnostics.Stopwatch.StartNew();
+    while (swS.Elapsed.TotalSeconds < 30 && !Ui(() => mgrS.Devices.Any(d => d.IsOnline))) await Task.Delay(300);
+    await Task.Delay(2000);
+    var info = Ui(() => mgrS.Devices.Select(d => (d.Id, d.Pending, d.IsOnline, Video: d.Thumb?.Options.Video)).ToList());
+    foreach (var x in info) Console.WriteLine($"  ô: {x.Id} · online {x.IsOnline} · luồng lưới có hình: {x.Video}");
+    Check(info.Count == 1 && info[0].Id == serial && info[0].IsOnline, "Chỉ nhận đúng 1 máy đã chọn (bỏ qua các máy khác)", $"{info.Count} ô sau {swS.Elapsed.TotalSeconds:0}s");
+    Check(info.Count == 1 && info[0].Video == false, "Máy đó không mở luồng lưới (chỉ điều khiển; hình do màn hình lớn)");
+    UiDo(() => mgrS.Dispose());
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // gom lô lệnh: chỉ bỏ điểm di chuyển cũ của cùng ngón, không bao giờ bỏ chạm xuống / nhấc lên (dotnet run -c Release -- batch)
 if (args.Contains("batch"))
 {

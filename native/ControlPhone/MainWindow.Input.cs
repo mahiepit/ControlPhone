@@ -335,7 +335,7 @@ public partial class MainWindow
             return;
         }
         // Esc luôn đóng màn hình phóng to; nút Quay lại của điện thoại = chuột phải / nút bên phải
-        if (key == Key.Escape && viewerId != null) { e.Handled = true; CloseViewer(); return; }
+        if (key == Key.Escape && viewerId != null && single == null) { e.Handled = true; CloseViewer(); return; }
         var kd = KeyboardTarget();
         if (kd is { IsOnline: true })
         {

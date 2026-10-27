@@ -46,6 +46,25 @@
                 <Button x:Name="BtnSolo" Style="{DynamicResource Primary}" Margin="6,0,0,0" Visibility="Collapsed" ToolTip="Đang chỉ hiển thị một số máy (các máy khác tạm dừng xem). Bấm để hiện lại tất cả">
                     <TextBlock x:Name="SoloLabel" Foreground="White" Tag="no-i18n"/>
                 </Button>
+                <!-- chế độ: điều khiển cả dàn ↔ chỉ 1 điện thoại (khởi động lại app ở chế độ đó) -->
+                <Button x:Name="BtnSingleMode" Style="{DynamicResource Ghost}" Margin="6,0,0,0" ToolTip="Chỉ kết nối và hiển thị 1 điện thoại (mượt nhất)">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Chỉ 1 máy"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="BtnPickPhone" Style="{DynamicResource Ghost}" Margin="6,0,0,0" Visibility="Collapsed" ToolTip="Chọn điện thoại khác để hiển thị">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE8EA;" FontFamily="{StaticResource IconFont}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Chọn máy khác"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="BtnAllMode" Style="{DynamicResource Primary}" Margin="6,0,0,0" Visibility="Collapsed" ToolTip="Kết nối và điều khiển cả dàn điện thoại">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource IconFont}" Foreground="White" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock Text="Điều khiển tất cả" Foreground="White"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- bên phải -->
                 <Button x:Name="BtnSettings" DockPanel.Dock="Right" Style="{DynamicResource IconGhost}" Content="&#xE713;" ToolTip="Cài đặt"/>
@@ -71,7 +90,7 @@
                     </StackPanel>
                 </Button>
                 <Button x:Name="BtnFit" DockPanel.Dock="Right" Style="{DynamicResource IconGhost}" Content="&#xE9A6;" ToolTip="Vừa khít màn hình"/>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0" ToolTip="Kích thước ô">
+                <StackPanel x:Name="SizeBox" DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0" ToolTip="Kích thước ô">
                     <TextBlock Text="&#xF0E2;" FontFamily="{StaticResource IconFont}" Foreground="{DynamicResource Muted}" Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <Slider x:Name="SizeSlider" Width="150" Minimum="110" Maximum="520" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -169,13 +188,13 @@
                     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource Line}" BorderThickness="0,1,0,0" Padding="8,6">
                         <WrapPanel x:Name="VFoot"/>
                     </Border>
-                    <Grid Margin="8">
+                    <Grid x:Name="VBody" Margin="8">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <Border x:Name="VScreen" Background="Black" CornerRadius="8" ClipToBounds="True" VerticalAlignment="Top" Focusable="True" FocusVisualStyle="{x:Null}" Cursor="Hand">
                             <Grid>
                                 <Image x:Name="VImg" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
                                 <Border x:Name="VOv" Background="#99000000" IsHitTestVisible="False">
-                                    <TextBlock Text="Đang mở luồng nét…" Foreground="#CCD0DD" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="VOvText" Text="Đang mở luồng nét…" Foreground="#CCD0DD" HorizontalAlignment="Center" VerticalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" Margin="12"/>
                                 </Border>
                             </Grid>
                         </Border>
