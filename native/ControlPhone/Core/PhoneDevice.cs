@@ -118,7 +118,10 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     internal bool Visible = true;      // ô đang nằm trong vùng nhìn thấy (ngoài vùng: không giải mã)
     internal long WatchSince, WatchFrames; internal bool WatchKf; internal int WatchResets; internal bool Watching;
 
-    public ScrcpySession? ControlSession => Thumb is { Running: true } t ? t : Hq is { Running: true } h ? h : null;
+    // phiên nhận điều khiển: phiên lưới; trong lúc nó đang được thay (chuyển chế độ) thì phiên cũ vẫn giữ điều khiển; rồi tới phiên màn hình lớn
+    public ScrcpySession? ControlSession => Thumb is { Running: true } t ? t : PrevThumb is { Running: true } p ? p : Hq is { Running: true } h ? h : null;
+    /// <summary>Phiên lưới cũ tạm giữ điều khiển trong lúc phiên mới đang khởi động (không làm gián đoạn thao tác).</summary>
+    internal ScrcpySession? PrevThumb;
     /// <summary>Khung cho ô lưới: luồng "tăng tốc" (máy đang trỏ chuột, 30 khung/giây) khi đã có hình, ngược lại luồng lưới.</summary>
     public FrameBuffer? Frames => BoostReady && BoostDecoder != null ? BoostDecoder.Output : ThumbDecoder?.Output;
     // luồng tăng tốc cho máy đang được trỏ chuột / điều khiển (lưới chạy thưa cho nhẹ, máy đang thao tác thì mượt)

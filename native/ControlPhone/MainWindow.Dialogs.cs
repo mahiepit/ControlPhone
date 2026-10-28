@@ -445,7 +445,7 @@ public partial class MainWindow
         importBtn.Margin = new Thickness(6, 0, 0, 0);
         var dataRow = new DockPanel(); DockPanel.SetDock(importBtn, Dock.Right); dataRow.Children.Add(importBtn); dataRow.Children.Add(dataPath);
         d.Body.Children.Add(d.Field("Thư mục dữ liệu (số thứ tự, tên, nhóm máy)", dataRow));
-        var swEnc = d.AddCheck("Lưới dùng bộ mã hoá phần mềm trên điện thoại (hình gần như không trễ — như Xiaowei; bỏ chọn để dùng bộ mã hoá phần cứng)", s.SoftwareEncoder);
+        var swEnc = d.AddCheck("Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)", s.SoftwareEncoder);
         var screenOff = d.AddCheck("Tự tắt màn hình điện thoại khi kết nối (vẫn xem & điều khiển được, tiết kiệm pin — thoát app màn hình tự bật lại)", s.ScreenOffOnConnect);
         var powerOn = d.AddCheck("Đánh thức điện thoại khi kết nối", s.PowerOnConnect);
         var autoWifi = d.AddCheck("Tự kết nối lại các máy WiFi đã từng kết nối", s.AutoReconnectWifi);

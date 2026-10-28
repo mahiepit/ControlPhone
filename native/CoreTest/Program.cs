@@ -167,6 +167,47 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// bộ mã hoá phần cứng + không gián đoạn điều khiển: dotnet run -c Release -- hwenc <serial>
+if (args.Contains("hwenc"))
+{
+    var serial = args.SkipWhile(a => a != "hwenc").Skip(1).First();
+    const string s9 = "    --video-codec=h264 --video-encoder=OMX.Exynos.AVC.Encoder         (hw) [vendor]\n    --video-codec=h264 --video-encoder=c2.android.avc.encoder         (sw)\n    --video-codec=h264 --video-encoder=OMX.google.h264.encoder        (sw) (alias for c2.android.avc.encoder)\n";
+    const string a50 = "    --video-codec=h264 --video-encoder=OMX.Exynos.AVC.Encoder         (hw) [vendor]\n    --video-codec=h264 --video-encoder=OMX.google.h264.encoder        (hybrid)\n";
+    const string swOnly = "    --video-codec=h264 --video-encoder=c2.android.avc.encoder (sw)\n    --video-codec=h265 --video-encoder=OMX.qcom.video.encoder.hevc (hw)\n";
+    Check(ControlPhone.Scrcpy.ScrcpySession.PickHardwareEncoder(s9) == "OMX.Exynos.AVC.Encoder" && ControlPhone.Scrcpy.ScrcpySession.PickHardwareEncoder(a50) == "OMX.Exynos.AVC.Encoder" && ControlPhone.Scrcpy.ScrcpySession.PickHardwareEncoder(swOnly) == null,
+        "Chọn bộ mã hoá H.264 phần cứng, bỏ c2.android.* / OMX.google.* (không có thì để mặc định)");
+    var hw = await ControlPhone.Scrcpy.ScrcpySession.HardwareEncoderAsync(serial);
+    Check(hw != null && !ControlPhone.Scrcpy.ScrcpySession.IsSoftwareEncoder(hw), "Đọc bộ mã hoá phần cứng từ máy thật (list_encoders)", hw ?? "(không có)");
+    // phiên có hình: dùng đúng bộ mã hoá phần cứng + lặp khung thưa khi đứng yên (kiểm tra dòng lệnh đang chạy trên máy)
+    using (var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { MaxSize = 480, BitRate = 600_000, MaxFps = 15, PowerOn = false }))
+    {
+        await s.StartAsync(); await Task.Delay(2500);
+        var cmd = await AdbClient.ShellAsync(serial, "ps -A -o ARGS | grep -m1 'com.genymobile.scrcpy.Server 5.0 scid=' | grep -v grep", 8000);
+        Check(s.Running && s.UsedEncoder == hw && cmd.Contains("video_encoder=" + hw) && cmd.Contains("repeat-previous-frame-after:long=1000000"), "Phiên chạy bằng bộ mã hoá phần cứng + lặp khung thưa khi màn hình đứng yên", $"{s.PacketsReceived} gói / 2,5 s");
+    }
+    // không gián đoạn điều khiển khi bật / tắt màn hình lớn (luồng lưới đổi chế độ)
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    var mgrH = Ui(() => new DeviceManager(ui!));
+    var dev = Ui(() => new PhoneDevice(serial) { ActiveAddr = serial });
+    typeof(DeviceManager).GetMethod("EnsureThumb", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(mgrH, [dev]);
+    var swH = System.Diagnostics.Stopwatch.StartNew();
+    while (swH.Elapsed.TotalSeconds < 20 && !Ui(() => dev.IsOnline)) await Task.Delay(100);
+    async Task<(int Null, int Total)> Watch(Action change, int ms)
+    {
+        UiDo(change);
+        int nul = 0, tot = 0; var w = System.Diagnostics.Stopwatch.StartNew();
+        while (w.ElapsedMilliseconds < ms) { tot++; if (Ui(() => dev.ControlSession) == null) nul++; await Task.Delay(10); }
+        return (nul, tot);
+    }
+    var open = await Watch(() => mgrH.AcquireHq(dev), 5000);
+    var close = await Watch(() => mgrH.ReleaseHq(dev), 5000);
+    Console.WriteLine($"  mở màn hình lớn: {open.Null}/{open.Total} lần không có phiên điều khiển · đóng: {close.Null}/{close.Total}");
+    Check(open.Null == 0 && close.Null == 0, "Bật / tắt màn hình lớn không làm mất phiên điều khiển lúc nào");
+    UiDo(() => mgrH.Dispose());
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return fail == 0 ? 0 : 1;
+}
+
 // chụp màn hình chọn chế độ (ngoài màn hình, không hiện cho người dùng): dotnet run -c Release -- modeshot <thư mục>
 if (args.Contains("modeshot"))
 {

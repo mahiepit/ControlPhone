@@ -46,6 +46,13 @@
                 <Button x:Name="BtnSolo" Style="{DynamicResource Primary}" Margin="6,0,0,0" Visibility="Collapsed" ToolTip="Đang chỉ hiển thị một số máy (các máy khác tạm dừng xem). Bấm để hiện lại tất cả">
                     <TextBlock x:Name="SoloLabel" Foreground="White" Tag="no-i18n"/>
                 </Button>
+                <!-- adb server khác đang giữ máy: chỉ báo bằng nút (không bật hộp thoại giữa lúc người dùng đang thao tác) -->
+                <Button x:Name="BtnOtherAdb" Style="{DynamicResource Ghost}" Margin="6,0,0,0" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="&#xE7BA;" FontFamily="{StaticResource IconFont}" Foreground="{DynamicResource Warn}" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="OtherAdbLabel" Foreground="{DynamicResource Warn}" Tag="no-i18n"/>
+                    </StackPanel>
+                </Button>
                 <!-- chế độ: điều khiển cả dàn ↔ chỉ 1 điện thoại (khởi động lại app ở chế độ đó) -->
                 <Button x:Name="BtnSingleMode" Style="{DynamicResource Ghost}" Margin="6,0,0,0" ToolTip="Chỉ kết nối và hiển thị 1 điện thoại (mượt nhất)">
                     <StackPanel Orientation="Horizontal">

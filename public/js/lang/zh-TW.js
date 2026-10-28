@@ -573,4 +573,6 @@ export default {
   "Kết nối và điều khiển cả dàn điện thoại": "連線並控制所有手機",
   "Đang chờ điện thoại… (cắm USB và bật Gỡ lỗi USB)": "正在等待手機…（連接 USB 並開啟 USB 偵錯）",
   "Mất kết nối — đang chờ máy kết nối lại…": "連線中斷——等待手機重新連線…",
+  "{0} máy bị chương trình khác giữ — Giải phóng": "{0} 台手機被其他程式佔用——釋放",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "格狀檢視使用手機軟體編碼器（預設：硬體編碼器，從手機編碼器清單自動選擇）",
 };

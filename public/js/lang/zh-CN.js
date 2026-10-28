@@ -573,4 +573,6 @@ export default {
   "Kết nối và điều khiển cả dàn điện thoại": "连接并控制所有手机",
   "Đang chờ điện thoại… (cắm USB và bật Gỡ lỗi USB)": "正在等待手机…（连接 USB 并开启 USB 调试）",
   "Mất kết nối — đang chờ máy kết nối lại…": "连接已断开——等待手机重新连接…",
+  "{0} máy bị chương trình khác giữ — Giải phóng": "{0} 台手机被其他程序占用——释放",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "网格使用手机软件编码器（默认：硬件编码器，从手机编码器列表自动选择）",
 };

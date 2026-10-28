@@ -12,10 +12,10 @@ public sealed class Settings
     public int ThumbBitRate { get; set; } = 600_000;
     public int ThumbFps { get; set; } = 15;
     /// <summary>
-    /// Lưới dùng bộ mã hoá phần mềm OMX.google.h264.encoder (như Xiaowei). Đo trên box A50: bộ mã hoá phần cứng ở 480p/5 fps
-    /// trễ 0,2–1,9 giây (hình chạy sau thao tác), phần mềm chỉ 0,14–0,2 giây. Màn hình lớn vẫn dùng phần cứng (nhanh hơn ở 1280p).
+    /// Dùng bộ mã hoá PHẦN MỀM (OMX.google.h264.encoder) cho lưới. Mặc định TẮT: khi đang xem, ưu tiên bộ mã hoá phần cứng
+    /// của máy (chọn qua scrcpy list_encoders, tránh c2.android.* / OMX.google.*).
     /// </summary>
-    public bool SoftwareEncoder { get; set; } = true;
+    public bool SoftwareEncoder { get; set; }
     /// <summary>Phiên bản cài đặt (để chuyển đổi một lần khi đổi mặc định).</summary>
     public int Rev { get; set; }
     public int HqMaxSize { get; set; } = 1280;
@@ -160,6 +160,8 @@ public static class Store
             if (st.ThumbMaxSize == 480 && ((st.ThumbBitRate == 300_000 && st.ThumbFps == 10) || (st.ThumbBitRate == 150_000 && st.ThumbFps == 5))) { st.ThumbBitRate = 600_000; st.ThumbFps = 15; }
             st.Rev = 3;
         }
+        // 2.1.1: ưu tiên bộ mã hoá phần cứng khi đang xem (2.0.13–2.1.0 mặc định dùng phần mềm cho lưới)
+        if (State.Settings.Rev < 4) { State.Settings.SoftwareEncoder = false; State.Settings.Rev = 4; }
         State.Devices ??= [];
         foreach (var m in State.Devices.Values) m.Groups ??= [];
         if (string.IsNullOrWhiteSpace(Settings.ScreenshotDir)) Settings.ScreenshotDir = Path.Combine(Path.GetDirectoryName(DataDir) ?? AppContext.BaseDirectory, "screenshots");

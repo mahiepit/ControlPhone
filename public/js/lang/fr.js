@@ -573,4 +573,6 @@ export default {
   "Kết nối và điều khiển cả dàn điện thoại": "Connecter et contrôler tous les téléphones",
   "Đang chờ điện thoại… (cắm USB và bật Gỡ lỗi USB)": "En attente du téléphone… (branchez l'USB et activez le débogage USB)",
   "Mất kết nối — đang chờ máy kết nối lại…": "Déconnecté — en attente de reconnexion…",
+  "{0} máy bị chương trình khác giữ — Giải phóng": "{0} téléphones pris par un autre programme — Libérer",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "La grille utilise l'encodeur logiciel du téléphone (par défaut : encodeur matériel, choisi dans la liste du téléphone)",
 };

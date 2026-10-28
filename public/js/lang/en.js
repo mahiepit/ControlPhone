@@ -573,4 +573,6 @@ export default {
   "Kết nối và điều khiển cả dàn điện thoại": "Connect and control all phones",
   "Đang chờ điện thoại… (cắm USB và bật Gỡ lỗi USB)": "Waiting for the phone… (plug in USB and enable USB debugging)",
   "Mất kết nối — đang chờ máy kết nối lại…": "Disconnected — waiting for the phone to reconnect…",
+  "{0} máy bị chương trình khác giữ — Giải phóng": "{0} phones held by another program — Release",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "Grid uses the phone's software encoder (default: hardware encoder, picked from the phone's encoder list)",
 };

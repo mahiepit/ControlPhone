@@ -17,8 +17,13 @@ public sealed class ScrcpyOptions
     public bool StayAwake { get; init; }
     /// <summary>false = phiên "chỉ điều khiển" (không mã hoá/gửi hình): máy tạm dừng xem / đang phóng to.</summary>
     public bool Video { get; init; } = true;
-    /// <summary>Bộ mã hoá trên điện thoại (null = mặc định của máy, thường là phần cứng).</summary>
+    /// <summary>Bộ mã hoá trên điện thoại do người gọi chỉ định (null = tự chọn, xem <see cref="PreferHardware"/>).</summary>
     public string? Encoder { get; init; }
+    /// <summary>
+    /// Encoder = null: đọc danh sách encoder của máy (scrcpy list_encoders, 1 lần/máy) và chọn bộ mã hoá H.264 PHẦN CỨNG
+    /// (bỏ c2.android.* / OMX.google.* — phần mềm). Không tìm được thì để máy dùng bộ mã hoá mặc định.
+    /// </summary>
+    public bool PreferHardware { get; init; } = true;
 }
 
 /// <summary>
@@ -91,6 +96,44 @@ public sealed class ScrcpySession : IDisposable
 
     public static void ForgetPushed(string addr) => Pushes.TryRemove(addr, out _);
 
+    // bộ mã hoá phần cứng đã chọn cho từng máy (theo serial USB)
+    static readonly ConcurrentDictionary<string, Task<string?>> HwEncoders = new();
+
+    /// <summary>Bộ mã hoá H.264 phần cứng của máy (đọc bằng scrcpy list_encoders, nhớ trong phiên chạy app). null = không rõ.</summary>
+    public static Task<string?> HardwareEncoderAsync(string addr) => HwEncoders.GetOrAdd(AdbClient.SplitAddr(addr).Serial, key => Task.Run(async () =>
+    {
+        try
+        {
+            await EnsureServerPushedAsync(addr).ConfigureAwait(false);
+            // cleanup=false: không để server tự xoá tệp jar dùng chung
+            var o = await AdbClient.ShellAsync(addr, $"CLASSPATH={ServerRemote} app_process / com.genymobile.scrcpy.Server {ServerVersion} list_encoders=true cleanup=false log_level=info 2>&1", 15000).ConfigureAwait(false);
+            return PickHardwareEncoder(o);
+        }
+        catch { HwEncoders.TryRemove(key, out _); return null; } // lỗi tạm thời: lần sau đọc lại
+    }));
+
+    /// <summary>Chọn bộ mã hoá H.264 phần cứng từ đầu ra list_encoders; bỏ bộ mã hoá phần mềm c2.android.* / OMX.google.*.</summary>
+    public static string? PickHardwareEncoder(string listing)
+    {
+        string? fallback = null;
+        foreach (var line in listing.Split('\n'))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"--video-codec=h264\s+--video-encoder=(\S+)\s*(?:\((\w+)\))?");
+            if (!m.Success) continue;
+            var name = m.Groups[1].Value;
+            if (IsSoftwareEncoder(name)) continue;
+            if (m.Groups[2].Value == "hw") return name;
+            fallback ??= name; // không ghi rõ (hw) nhưng cũng không phải bộ mã hoá phần mềm của Android
+        }
+        return fallback;
+    }
+
+    public static bool IsSoftwareEncoder(string name) =>
+        name.StartsWith("c2.android.", StringComparison.OrdinalIgnoreCase) || name.StartsWith("OMX.google.", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Bộ mã hoá thực sự đã dùng cho phiên này (null = mặc định của máy).</summary>
+    public string? UsedEncoder { get; private set; }
+
     /// <summary>Dòng lệnh đã chạy + toàn bộ đầu ra gần nhất của scrcpy-server (tối đa 30 dòng) — để ghi nhật ký khi lỗi.</summary>
     public string LogText { get { lock (logTail) return $"$ {commandLine}\n{string.Join("\n", logTail)}"; } }
     string commandLine = "";
@@ -102,8 +145,12 @@ public sealed class ScrcpySession : IDisposable
         if (Closed) throw new ObjectDisposedException("session");
         var scid = Random.Shared.Next(0, int.MaxValue).ToString("x8");
         var o = Options;
+        string? enc = o.Encoder;
+        if (enc == null && o.Video && o.PreferHardware) enc = await HardwareEncoderAsync(Addr).ConfigureAwait(false);
+        if (Closed) throw new ObjectDisposedException("session");
+        UsedEncoder = o.Video ? enc : null;
         string[] videoArgs = o.Video
-            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}", .. (o.Encoder != null ? new[] { $"video_encoder={o.Encoder}" } : [])]
+            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}", .. (enc != null ? new[] { $"video_encoder={enc}" } : [])]
             : ["video=false", "send_device_meta=false"];
         string[] args =
         [
@@ -111,8 +158,9 @@ public sealed class ScrcpySession : IDisposable
             "tunnel_forward=true", "control=true", "clipboard_autosync=false",
             $"power_on={(o.PowerOn ? "true" : "false")}", $"stay_awake={(o.StayAwake ? "true" : "false")}",
             "cleanup=true", "downsize_on_error=true",
-            // khung I thưa (20 giây): máy đứng yên gần như không tốn băng thông; cần hình ngay thì gửi RESET_VIDEO
-            "video_codec_options=i-frame-interval:int=20",
+            // khung I thưa (20 giây); màn hình đứng yên: chỉ lặp lại khung cũ ~1 lần/giây (mặc định scrcpy 10 lần/giây),
+            // màn hình đổi thì vẫn gửi đủ fps. Cần hình ngay thì gửi RESET_VIDEO.
+            "video_codec_options=i-frame-interval:int=20,repeat-previous-frame-after:long=1000000",
         ];
         // scrcpy-server tự xoá file jar khi chạy (cleanup) → mỗi phiên dùng một bản sao riêng
         var jar = $"/data/local/tmp/controlphone-{scid}.jar";

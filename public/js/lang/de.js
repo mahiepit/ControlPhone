@@ -573,4 +573,6 @@ export default {
   "Kết nối và điều khiển cả dàn điện thoại": "Alle Telefone verbinden und steuern",
   "Đang chờ điện thoại… (cắm USB và bật Gỡ lỗi USB)": "Warte auf das Telefon… (USB anschließen und USB-Debugging aktivieren)",
   "Mất kết nối — đang chờ máy kết nối lại…": "Getrennt — warte auf erneute Verbindung…",
+  "{0} máy bị chương trình khác giữ — Giải phóng": "{0} Telefone von anderem Programm belegt — Freigeben",
+  "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "Raster nutzt den Software-Encoder des Telefons (Standard: Hardware-Encoder aus der Encoder-Liste des Telefons)",
 };

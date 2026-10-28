@@ -338,11 +338,14 @@ public sealed class DeviceManager : IDisposable
     static bool ThumbWantsVideo(PhoneDevice d) => SingleAddr == null && !d.Paused && !d.SoloHidden && d.HqRefs == 0; // 1 máy: chỉ luồng nét của màn hình lớn
 
     const string SwEncoder = "OMX.google.h264.encoder";
+    // mặc định: bộ mã hoá PHẦN CỨNG của máy (chọn qua list_encoders, tránh c2.android.* / OMX.google.*);
+    // chỉ dùng phần mềm khi người dùng bật hẳn trong Cài đặt. Máy báo lỗi bộ mã hoá → dùng mặc định của máy.
     static string? GridEncoder(PhoneDevice d) => Store.Settings.SoftwareEncoder && !d.NoSwEncoder ? SwEncoder : null;
+    static bool PreferHw(PhoneDevice d) => !Store.Settings.SoftwareEncoder && !d.NoSwEncoder;
 
     /// <summary>Lỗi khởi động do máy không có bộ mã hoá đã chọn → ghi nhớ và dùng bộ mã hoá mặc định.</summary>
     static bool EncoderMissing(ScrcpySession s, string error) =>
-        s.Options.Encoder != null && (error + "\n" + s.LogText).Contains("encoder", StringComparison.OrdinalIgnoreCase)
+        s.UsedEncoder != null && (error + "\n" + s.LogText).Contains("encoder", StringComparison.OrdinalIgnoreCase)
         && (error + "\n" + s.LogText).Contains("not found", StringComparison.OrdinalIgnoreCase);
 
     ScrcpyOptions ThumbOptions(PhoneDevice d)
@@ -354,14 +357,14 @@ public sealed class DeviceManager : IDisposable
             // khi máy khởi động lại API đó chưa sẵn sàng → server chết (NullPointerException) → máy vừa reboot không vào được.
             // Giữ máy thức bằng lệnh settings thường (EnsureStayOn) thay thế.
             MaxSize = s.ThumbMaxSize, BitRate = s.ThumbBitRate, MaxFps = s.ThumbFps, PowerOn = s.PowerOnConnect,
-            StayAwake = false, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d),
+            StayAwake = false, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d), PreferHardware = PreferHw(d),
         };
     }
 
-    ScrcpyOptions HqOptions()
+    ScrcpyOptions HqOptions(PhoneDevice d)
     {
         var s = Store.Settings;
-        return new ScrcpyOptions { MaxSize = s.HqMaxSize, BitRate = s.HqBitRate, MaxFps = s.HqFps, PowerOn = s.PowerOnConnect };
+        return new ScrcpyOptions { MaxSize = s.HqMaxSize, BitRate = s.HqBitRate, MaxFps = s.HqFps, PowerOn = s.PowerOnConnect, PreferHardware = !d.NoSwEncoder };
     }
 
     void EnsureThumb(PhoneDevice d)
@@ -407,6 +410,7 @@ public sealed class DeviceManager : IDisposable
                     if (d.Thumb != sess) return;
                     d.Status = "online"; d.Error = ""; d.RestartDelayMs = 1000;
                     d.StartFails = 0; d.LastStartError = "";
+                    RetirePrevThumb(d); // phiên mới đã nhận điều khiển → đóng phiên cũ
                     if (!sess.Options.Video) { d.VideoW = d.VideoW == 0 ? sess.Width : d.VideoW; }
                     StartWatch(d);
                     Changed(d);
@@ -485,7 +489,7 @@ public sealed class DeviceManager : IDisposable
         var sess = new ScrcpySession(d.ActiveAddr, new ScrcpyOptions
         {
             MaxSize = s.ThumbMaxSize, BitRate = Math.Max(s.ThumbBitRate, 1_000_000), MaxFps = BoostFps, PowerOn = false, StayAwake = false, Video = true,
-            Encoder = GridEncoder(d),
+            Encoder = GridEncoder(d), PreferHardware = PreferHw(d),
         });
         d.Boost = sess;
         d.BoostSince = Environment.TickCount64;
@@ -554,7 +558,7 @@ public sealed class DeviceManager : IDisposable
     void EnsureHq(PhoneDevice d)
     {
         if (stopping || d.Hq != null || d.ActiveAddr == null || d.Pending) return;
-        var sess = new ScrcpySession(d.ActiveAddr, HqOptions());
+        var sess = new ScrcpySession(d.ActiveAddr, HqOptions(d));
         d.Hq = sess;
         if (d.HqDecoder == null)
         {
@@ -593,15 +597,26 @@ public sealed class DeviceManager : IDisposable
         if (t != null && t.Options.Video == ThumbWantsVideo(d)) return;
         d.RestartCts?.Cancel();
         d.Thumb = null; // gỡ trước khi dừng để trình xử lý "đóng phiên" không tự kết nối lại
-        t?.Dispose();
+        // KHÔNG làm gián đoạn điều khiển: phiên cũ vẫn nhận chạm/phím cho tới khi phiên mới chạy xong mới đóng
+        // (trước đây đóng ngay → khoảng ~1 giây không có phiên điều khiển nào, thao tác bị mất)
+        if (t is { Running: true }) { d.PrevThumb?.Dispose(); d.PrevThumb = t; } else t?.Dispose();
         d.HasFrame = false;
         EnsureThumb(d);
         Changed(d);
     }
 
+    /// <summary>Phiên mới đã chạy (hoặc hỏng): đóng phiên cũ đang tạm giữ điều khiển.</summary>
+    static void RetirePrevThumb(PhoneDevice d)
+    {
+        var p = d.PrevThumb;
+        d.PrevThumb = null;
+        p?.Dispose();
+    }
+
     void StopSessions(PhoneDevice d)
     {
         ClearBoost(d);
+        RetirePrevThumb(d);
         d.RestartCts?.Cancel();
         var t = d.Thumb; var h = d.Hq;
         d.Thumb = null; d.Hq = null;
