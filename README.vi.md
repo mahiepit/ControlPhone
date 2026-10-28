@@ -71,6 +71,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 - **WiFi** — USB → WiFi bằng 1 nút (và WiFi → USB để chuyển lại), kết nối theo IP, quét mạng LAN, ghép nối mã (Android 11+). Máy có cả USB và WiFi chỉ hiện 1 ô và tự chuyển khi mất kết nối; máy WiFi tự kết nối lại.
 - **2 chế độ khi mở app (ControlPhone 2.1+)** — *Điều khiển tất cả máy* (cả dàn, lưới + đồng bộ) hoặc *Chỉ hiển thị 1 điện thoại*: chọn 1 máy trong danh sách, ControlPhone chỉ kết nối máy đó và hiện màn hình lớn — mượt nhất khi làm việc với 1 máy. Đổi chế độ bất cứ lúc nào trên thanh trên cùng.
 - **Root** — tự nhận; shell root, bật ADB WiFi cố định, và tự cấy khoá ADB của máy tính vào `/data/misc/adb/adb_keys` để máy root không bao giờ hỏi "Cho phép gỡ lỗi USB" lại (rất hợp cho box phone không màn hình).
+- **Autoboot (máy root, Android 7+, ControlPhone 2.1.2+)** — box phone không có nút nguồn: máy tắt khi đang cắm cáp (hoặc đôi khi sau khi khởi động lại) sẽ dừng ở màn hình sạc và biến mất khỏi USB. ControlPhone tự cài `/system/etc/init/n9autoboot.rc` một lần cho mỗi máy (đã có thì bỏ qua, không khởi động lại máy), để máy rơi vào chế độ sạc sẽ tự khởi động thẳng vào Android. Nhật ký cài ở `data\logs\autoboot.log`.
 - **OTG** — mở `scrcpy --otg` (bàn phím/chuột qua USB, không cần Gỡ lỗi USB).
 - Mở cửa sổ scrcpy gốc cho từng máy khi cần.
 

@@ -575,4 +575,5 @@ export default {
   "Mất kết nối — đang chờ máy kết nối lại…": "Disconnected — waiting for the phone to reconnect…",
   "{0} máy bị chương trình khác giữ — Giải phóng": "{0} phones held by another program — Release",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "Grid uses the phone's software encoder (default: hardware encoder, picked from the phone's encoder list)",
+  "Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần": "No autoboot yet: the phone may be stuck on the charging screen — press its power button once",
 };

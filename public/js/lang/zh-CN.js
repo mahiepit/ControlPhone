@@ -575,4 +575,5 @@ export default {
   "Mất kết nối — đang chờ máy kết nối lại…": "连接已断开——等待手机重新连接…",
   "{0} máy bị chương trình khác giữ — Giải phóng": "{0} 台手机被其他程序占用——释放",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "网格使用手机软件编码器（默认：硬件编码器，从手机编码器列表自动选择）",
+  "Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần": "尚未安装 autoboot：手机可能停在充电画面——按一次电源键",
 };

@@ -35,6 +35,9 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     public double? Temp { get; internal set; }
     public string Ip { get; internal set; } = "";
     public bool? ScreenOn { get; internal set; }
+    /// <summary>Note 9 LineageOS 20: cần file autoboot (không có thì máy tắt khi cắm cáp sẽ kẹt ở màn hình sạc).</summary>
+    public bool AutoBootTarget { get; internal set; }
+    public bool AutoBootOk { get; internal set; }
 
     // ---- trạng thái ----
     public string Status { get; internal set; } = "offline"; // online | connecting | offline | unauthorized | error | authorizing
@@ -97,7 +100,10 @@ public sealed class PhoneDevice : INotifyPropertyChanged
         Pending ? I18n.T(Error)
         : Status == "connecting" && StartFails > 0 && LastStartError != ""
             ? I18n.T(LastStartError[..Math.Min(220, LastStartError.Length)]) + (StartFails >= 3 ? "\n" + I18n.T("Tự thử lại mỗi phút · nhật ký: data\\logs") : "")
-        : Paused && IsOnline && !Zoomed ? I18n.T("Vẫn điều khiển được") : "";
+        : Paused && IsOnline && !Zoomed ? I18n.T("Vẫn điều khiển được")
+        // máy ở màn hình sạc (LPM) không hiện trên USB: chỉ còn cách bấm nút nguồn
+        : Status == "offline" && AutoBootTarget && !AutoBootOk ? I18n.T("Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần")
+        : "";
     public bool ShowOverlay => OverlayKind != "";
     public bool ShowSpinner => OverlayKind == "spin";
 

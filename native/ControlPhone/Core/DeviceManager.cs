@@ -167,6 +167,15 @@ public sealed class DeviceManager : IDisposable
             // máy root: tự cấy khoá uỷ quyền của PC (1 lần/máy) → không bao giờ hỏi lại, kể cả box không màn hình
             if (d.Root && Store.Settings.AutoPersistKey && !meta.KeyPushed)
                 _ = Task.Run(async () => { var r = await AdbClient.PersistAdbKeyAsync(addr); if (r.Ok) ui.Invoke(() => { meta.KeyPushed = true; Store.Save(); }); });
+            // boxphone không nút nguồn: tự cài autoboot (máy root) nếu chưa có, để máy không kẹt ở màn hình sạc
+            d.AutoBootTarget = AutoBoot.Applies(d.Root, d.Sdk);
+            if (d.AutoBootTarget && !AutoBoot.Done(hwId))
+                _ = Task.Run(async () =>
+                {
+                    var r = await AutoBoot.EnsureAsync(hwId, addr);
+                    if (r.Ok) ui.BeginInvoke(() => { d.AutoBootOk = true; d.Changed(); });
+                });
+            else if (d.AutoBootTarget) d.AutoBootOk = true;
             // chế độ "chỉ nhập từ PC": bàn phím có thể bị đổi khi máy khởi động lại → chọn lại
             if (meta.PcKeyboard) _ = Task.Run(async () => { try { await PcKeyboard.EnsureAsync(addr); } catch { } });
             // tắt màn hình thật khi kết nối → máy phải thức khi cắm sạc (thay cho stay_awake của scrcpy); chỉ đổi khi đang tắt

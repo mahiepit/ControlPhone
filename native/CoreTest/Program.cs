@@ -167,6 +167,31 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// autoboot (thoát chế độ sạc): dotnet run -c Release -- autoboot <serial,serial,…> — cài nếu thiếu, không tắt nguồn máy
+if (args.Contains("autoboot"))
+{
+    var serials = args.SkipWhile(a => a != "autoboot").Skip(1).First().Split(',');
+    var orig = @"D:\BuildRomAndroid\scripts\device\n9autoboot.rc";
+    if (File.Exists(orig))
+    {
+        var rcField = typeof(AutoBoot).GetField("Rc", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var rc = System.Text.Encoding.ASCII.GetBytes((string)rcField.GetValue(null)!);
+        Check(rc.SequenceEqual(File.ReadAllBytes(orig)), "Nội dung rc nhúng trùng bản gốc (byte, LF)", $"{rc.Length} byte");
+    }
+    foreach (var s in serials)
+    {
+        var r = await AutoBoot.EnsureAsync("test:" + s, s);
+        var chk = await AdbClient.ShellAsync(s, "grep -c 'sys.powerctl reboot' /system/etc/init/n9autoboot.rc; grep -c $'\\r' /system/etc/init/n9autoboot.rc; ls -lZ /system/etc/init/n9autoboot.rc; grep -E ' / | /system ' /proc/mounts | head -2", 15000);
+        var l = chk.Split('\n').Select(x => x.Trim()).ToArray();
+        Check(r.Ok && l.ElementAtOrDefault(0) == "1" && l.ElementAtOrDefault(1) == "0" && chk.Contains("system_file") && chk.Contains("root root"),
+            $"{s}: autoboot có trên máy (1 dòng powerctl, không CR, root:root, system_file)", r.Msg + " | " + string.Join(" | ", l.Skip(2)));
+    }
+    var abLog = Path.Combine(Store.DataDir, "logs", "autoboot.log");
+    Console.WriteLine($"Nhật ký: {abLog}\n{(File.Exists(abLog) ? File.ReadAllText(abLog) : "(trống — mọi máy đã có sẵn)")}");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // bộ mã hoá phần cứng + không gián đoạn điều khiển: dotnet run -c Release -- hwenc <serial>
 if (args.Contains("hwenc"))
 {
