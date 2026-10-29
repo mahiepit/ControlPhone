@@ -576,4 +576,8 @@ export default {
   "{0} máy bị chương trình khác giữ — Giải phóng": "{0} phones held by another program — Release",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "Grid uses the phone's software encoder (default: hardware encoder, picked from the phone's encoder list)",
   "Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần": "No autoboot yet: the phone may be stuck on the charging screen — press its power button once",
+  "Khoá đã có sẵn": "Key already installed",
+  "Đang tự cấp lại quyền ADB qua xwdb…": "Re-authorizing ADB automatically via xwdb…",
+  "Đã tự cấp lại quyền ADB cho {0} qua xwdb": "ADB re-authorized automatically for {0} via xwdb",
+  "Không tự cấp lại quyền ADB cho {0} qua xwdb: {1}": "Could not re-authorize ADB for {0} via xwdb: {1}",
 };

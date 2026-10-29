@@ -18,6 +18,8 @@ public sealed class DeviceManager : IDisposable
     readonly CancellationTokenSource cts = new();
     readonly Dictionary<string, string> serialToId = [];      // addr → hwId
     readonly Dictionary<string, string> serialStates = [];    // addr → state
+    // máy đã kiểm tra khoá uỷ quyền / thời hạn uỷ quyền trong lần chạy này
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> keyChecked = new();
     readonly HashSet<string> probing = [];
     readonly Dictionary<string, string> probeErrors = [];
     readonly SemaphoreSlim probeLimiter = new(8), infoLimiter = new(8);
@@ -75,6 +77,8 @@ public sealed class DeviceManager : IDisposable
         using var _op = StallWatch.Op("adb: danh sách máy thay đổi");
         if (stopping) return;
         if (SingleAddr != null) list = list.Where(x => IsSingleTarget(x.Addr)).ToList();
+        // kết nối xwdb tạm thời của bước tự cấp quyền: không nhận thành máy/đường kết nối
+        if (!healing.IsEmpty) list = list.Where(x => !healing.ContainsKey(x.Addr)).ToList();
         lastTrack = list;
         var seen = list.ToDictionary(x => x.Addr, x => x.State);
         // serial biến mất hoặc không còn ở trạng thái device
@@ -109,11 +113,82 @@ public sealed class DeviceManager : IDisposable
                 }
                 d.Status = x.State;
                 d.Error = x.State == "unauthorized" ? "Hãy bấm \"Cho phép gỡ lỗi USB\" trên điện thoại" : "Thiết bị đang " + x.State;
+                if (x.State == "unauthorized" && TryHealViaXwdb(x.Addr)) d.Error = "Đang tự cấp lại quyền ADB qua xwdb…";
                 Changed(d);
             }
         }
         foreach (var k in serialStates.Keys.ToList()) if (!seen.ContainsKey(k)) serialStates.Remove(k);
         foreach (var (k, v) in seen) serialStates[k] = v;
+    }
+
+    // ---------- tự cấp lại quyền ADB qua xwdb ----------
+    readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> healing = new(); // địa chỉ xwdb đang dùng tạm
+    readonly Dictionary<string, long> lastHeal = [];
+
+    /// <summary>
+    /// ADB USB của máy bị "chờ cho phép" (Android 11+ tự thu hồi khoá, hoặc adb_keys bị ghi đè) mà máy có xwdb của Xiaowei
+    /// (adbd riêng chạy root, nghe 15555 qua WiFi, không phụ thuộc uỷ quyền USB): vào qua xwdb, cấy lại khoá PC + tắt thời hạn
+    /// uỷ quyền, ngắt xwdb, rồi cho USB kết nối lại → máy tự về "device", không cần ai bấm "Cho phép". Không giữ kết nối
+    /// WiFi thường trực (công cụ khác dùng chung adb server sẽ thấy mỗi máy 2 lần). Trả về true nếu đang/sắp thử.
+    /// </summary>
+    bool TryHealViaXwdb(string addr)
+    {
+        var serial = AdbClient.SplitAddr(addr).Serial;
+        if (AdbClient.IsWifiSerial(addr) || !Store.State.Devices.TryGetValue(serial, out var meta) || meta.Xwdb is not { } xw) return false;
+        if (healing.ContainsKey(xw)) return true;
+        long now = Environment.TickCount64;
+        if (lastHeal.TryGetValue(serial, out var t) && now - t < 60_000) return false;
+        lastHeal[serial] = now;
+        healing[xw] = 0;
+        var expectAid = meta.AndroidId;
+        _ = Task.Run(async () =>
+        {
+            string result;
+            try { result = await HealViaXwdbAsync(addr, xw, expectAid); }
+            catch (Exception e) { result = e.Message; }
+            finally { healing.TryRemove(xw, out _); }
+            bool ok = result == "";
+            ui.BeginInvoke(() => Log?.Invoke(ok ? I18n.T("Đã tự cấp lại quyền ADB cho {0} qua xwdb", serial) : I18n.T("Không tự cấp lại quyền ADB cho {0} qua xwdb: {1}", serial, result), !ok));
+        });
+        return true;
+    }
+
+    /// <summary>Cấy lại khoá qua xwdb, ngắt xwdb, kết nối lại USB, đóng hộp thoại "Cho phép gỡ lỗi USB" còn treo. "" = thành công.</summary>
+    public static async Task<string> HealViaXwdbAsync(string usbAddr, string xw, string? expectAid)
+    {
+        string r;
+        try { r = await FixKeyViaXwdbAsync(xw, expectAid); }
+        finally { await AdbClient.RunAsync(["disconnect", xw], 8000); }
+        if (r != "") return r;
+        await AdbClient.RunAsync([.. AdbClient.Sel(usbAddr), "reconnect"], 8000); // USB xác thực lại với khoá vừa cấy
+        for (int i = 0; i < 15; i++)
+        {
+            await Task.Delay(1000);
+            string top;
+            try { top = await AdbClient.ShellAsync(usbAddr, "dumpsys activity activities | grep -m1 -E 'mResumedActivity|ResumedActivity:'", 8000); }
+            catch { continue; } // chưa vào lại / còn chờ cho phép
+            // hộp thoại cũ vẫn nằm trên màn hình (nó chỉ tự đóng khi có người bấm): BACK = từ chối lượt hỏi cũ, adbd bỏ qua
+            if (top.Contains("UsbDebuggingActivity")) try { await AdbClient.ShellAsync(usbAddr, "input keyevent 4", 8000); } catch { }
+            return "";
+        }
+        return "USB vẫn chưa được cho phép sau khi cấy khoá";
+    }
+
+    static async Task<string> FixKeyViaXwdbAsync(string xw, string? expectAid)
+    {
+        var c = await AdbClient.RunAsync(["connect", xw], 10000);
+        if (!c.Out.Contains("connected to")) return c.Out;
+        // đúng máy? (IP có thể đã cấp cho máy khác)
+        string aid = "";
+        for (int i = 0; i < 5 && aid == ""; i++)
+        {
+            try { aid = (await AdbClient.ShellAsync(xw, "settings get secure android_id", 8000)).Trim(); } catch { await Task.Delay(1000); }
+        }
+        if (aid == "") return "xwdb không trả lời";
+        if (!string.IsNullOrEmpty(expectAid) && !aid.Equals(expectAid, StringComparison.OrdinalIgnoreCase)) return $"{xw} là máy khác";
+        try { await AdbClient.ShellAsync(xw, "settings put global adb_allowed_connection_time 0", 8000); } catch { }
+        var k = await AdbClient.PersistAdbKeyAsync(xw);
+        return k.Ok ? "" : k.Msg;
     }
 
     async Task ProbeAsync(string addr)
@@ -164,9 +239,31 @@ public sealed class DeviceManager : IDisposable
             var meta = Store.Meta(hwId);
             if (androidId != "" && meta.AndroidId != androidId) { meta.AndroidId = androidId; Store.Save(); }
             if (type == "wifi") RememberWifi(hwId, addr);
-            // máy root: tự cấy khoá uỷ quyền của PC (1 lần/máy) → không bao giờ hỏi lại, kể cả box không màn hình
-            if (d.Root && Store.Settings.AutoPersistKey && !meta.KeyPushed)
-                _ = Task.Run(async () => { var r = await AdbClient.PersistAdbKeyAsync(addr); if (r.Ok) ui.Invoke(() => { meta.KeyPushed = true; Store.Save(); }); });
+            // máy root: kiểm tra khoá uỷ quyền của PC mỗi lần nhận máy (1 lần/máy/lần chạy) và cấy lại nếu mất → không bao giờ
+            // hỏi lại, kể cả box không màn hình. Android 11+ còn tự thu hồi khoá không dùng sau 7 ngày (đã gặp: 18 máy Note 8
+            // LOS 18.1 cùng hỏi "Cho phép gỡ lỗi USB") → tắt thời hạn đó (adb_allowed_connection_time = 0: không bao giờ hết hạn).
+            if (keyChecked.TryAdd(hwId, 0))
+                _ = Task.Run(async () =>
+                {
+                    if (d.Sdk >= 30)
+                        try { await AdbClient.ShellAsync(addr, "[ \"$(settings get global adb_allowed_connection_time)\" = 0 ] || settings put global adb_allowed_connection_time 0", 10000); } catch { }
+                    if (!d.Root || !Store.Settings.AutoPersistKey) return;
+                    // xwdb của Xiaowei (nghe 15555 qua WiFi): nhớ lại để tự cấp quyền khi ADB USB bị "chờ cho phép"
+                    if (type == "usb")
+                    {
+                        string? xw = null;
+                        try { xw = await AdbClient.ShellAsync(addr, "su -c 'pidof xwdb >/dev/null && ip -f inet addr show wlan0 | grep -m1 -o \"inet [0-9.]*\"'; echo XW_DONE", 10000); } catch { }
+                        if (xw != null && xw.Contains("XW_DONE"))
+                        {
+                            var ip = Regex.Match(xw, @"inet ([\d.]+)");
+                            var xwAddr = ip.Success ? ip.Groups[1].Value + ":15555" : null;
+                            if (xwAddr != meta.Xwdb) ui.Invoke(() => { meta.Xwdb = xwAddr; Store.Save(); });
+                        }
+                    }
+                    var r = await AdbClient.PersistAdbKeyAsync(addr);
+                    if (r.Ok && !meta.KeyPushed) ui.Invoke(() => { meta.KeyPushed = true; Store.Save(); });
+                    if (!r.Ok) keyChecked.TryRemove(hwId, out _);
+                });
             // boxphone không nút nguồn: tự cài autoboot (máy root) nếu chưa có, để máy không kẹt ở màn hình sạc
             d.AutoBootTarget = AutoBoot.Applies(d.Root, d.Sdk);
             if (d.AutoBootTarget && !AutoBoot.Done(hwId))
@@ -767,6 +864,8 @@ public sealed class DeviceManager : IDisposable
                     d.Temp = temp != null && int.Parse(temp) > 0 ? int.Parse(temp) / 10.0 : null;
                     d.Charging = Regex.IsMatch(o, @"(AC|USB|Wireless) powered:\s*true");
                     d.Ip = M(@"inet\s+(\d+\.\d+\.\d+\.\d+)") ?? "";
+                    // IP đổi (DHCP): cập nhật địa chỉ xwdb đã nhớ
+                    if (d.Ip != "" && Store.State.Devices.TryGetValue(d.Id, out var mx) && mx.Xwdb != null && mx.Xwdb != d.Ip + ":15555") { mx.Xwdb = d.Ip + ":15555"; Store.Save(); }
                     d.ScreenOn = wake != null ? wake == "Awake" : null;
                     Changed(d);
                 });

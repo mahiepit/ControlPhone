@@ -51,6 +51,11 @@ public sealed class DeviceMeta
     public string? Wifi { get; set; }
     public bool Paused { get; set; }
     public bool KeyPushed { get; set; }
+    /// <summary>
+    /// "IP:15555" của xwdb (adbd riêng của Xiaowei, chạy root qua WiFi) nếu máy có: đường vào khi ADB USB bị "chờ cho phép"
+    /// để tự cấy lại khoá. Cập nhật theo IP mới nhất.
+    /// </summary>
+    public string? Xwdb { get; set; }
     /// <summary>Chế độ "chỉ nhập từ PC": dùng bàn phím ControlPhone (không hiện bàn phím trên điện thoại).</summary>
     public bool PcKeyboard { get; set; }
     /// <summary>Bàn phím trước khi bật chế độ trên (để trả lại khi tắt).</summary>

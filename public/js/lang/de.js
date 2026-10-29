@@ -576,4 +576,8 @@ export default {
   "{0} máy bị chương trình khác giữ — Giải phóng": "{0} Telefone von anderem Programm belegt — Freigeben",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "Raster nutzt den Software-Encoder des Telefons (Standard: Hardware-Encoder aus der Encoder-Liste des Telefons)",
   "Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần": "Noch kein Autoboot: das Telefon hängt evtl. im Ladebildschirm — Ein-/Aus-Taste einmal drücken",
+  "Khoá đã có sẵn": "Schlüssel bereits vorhanden",
+  "Đang tự cấp lại quyền ADB qua xwdb…": "ADB wird über xwdb automatisch neu autorisiert…",
+  "Đã tự cấp lại quyền ADB cho {0} qua xwdb": "ADB für {0} über xwdb automatisch neu autorisiert",
+  "Không tự cấp lại quyền ADB cho {0} qua xwdb: {1}": "ADB für {0} konnte über xwdb nicht neu autorisiert werden: {1}",
 };

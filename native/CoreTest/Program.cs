@@ -167,6 +167,57 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// tự cấp lại quyền qua xwdb: dotnet run -c Release -- xwheal <serial USB> — GỠ khoá PC khỏi adb_keys (máy về "chờ cho phép")
+// rồi để ControlPhone tự chữa. Chỉ chạy trên máy có xwdb; luôn khôi phục khoá khi kết thúc.
+if (args.Contains("xwheal"))
+{
+    var s = args.SkipWhile(a => a != "xwheal").Skip(1).First();
+    var ip = System.Text.RegularExpressions.Regex.Match(await AdbClient.ShellAsync(s, "ip -f inet addr show wlan0 | grep -m1 inet"), @"inet ([\d.]+)").Groups[1].Value;
+    var xw = ip + ":15555";
+    var aid = (await AdbClient.ShellAsync(s, "settings get secure android_id")).Trim();
+    var frag = File.ReadAllText(AdbClient.PubKeyPath()).Trim().Split(' ')[0].Substring(40, 40);
+    async Task<string> State() => (await AdbClient.RunAsync(["devices"], 8000)).Out.Split('\n').Select(l => l.Trim().Split('\t')).FirstOrDefault(f => f[0] == s)?.ElementAtOrDefault(1) ?? "(không thấy)";
+    Console.WriteLine($"{s} · xwdb {xw} · android_id {aid}");
+    try
+    {
+        // gây lỗi giống thật: khoá PC biến mất khỏi adb_keys, USB kết nối lại → máy hỏi "Cho phép gỡ lỗi USB"
+        await AdbClient.RunAsync(["connect", xw], 10000);
+        var rm = await AdbClient.ShellAsync(xw, $"su -c 'sed -i \"/{frag.Replace("/", "\\/")}/d\" /data/misc/adb/adb_keys; wc -l < /data/misc/adb/adb_keys'", 10000);
+        await AdbClient.RunAsync(["disconnect", xw], 8000);
+        await AdbClient.RunAsync(["-s", s, "reconnect"], 8000);
+        string st = "";
+        for (int i = 0; i < 20 && st != "unauthorized"; i++) { await Task.Delay(1000); st = await State(); }
+        Check(st == "unauthorized", "Gây lỗi: gỡ khoá PC → USB về \"unauthorized\" (máy hiện hộp thoại cho phép)", $"adb_keys còn {rm.Trim()} dòng · trạng thái {st}");
+        var sw2 = System.Diagnostics.Stopwatch.StartNew();
+        var r = await ControlPhone.Core.DeviceManager.HealViaXwdbAsync(s, xw, aid);
+        st = await State();
+        var top = st == "device" ? await AdbClient.ShellAsync(s, "dumpsys activity activities | grep -m1 -E 'mResumedActivity|ResumedActivity:'") : "";
+        Check(r == "" && st == "device" && !top.Contains("UsbDebuggingActivity"), "Tự chữa qua xwdb: khoá cấy lại, USB về \"device\", hộp thoại đã đóng",
+            $"{(r == "" ? "OK" : r)} · {st} · {sw2.ElapsedMilliseconds} ms · {top.Trim()}");
+    }
+    finally
+    {
+        if (await State() != "device") { Console.WriteLine("Khôi phục…"); Console.WriteLine(await ControlPhone.Core.DeviceManager.HealViaXwdbAsync(s, xw, aid)); }
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
+// giữ uỷ quyền adb: dotnet run -c Release -- authkeep <serial,serial,…> — khoá PC có trong adb_keys, thời hạn uỷ quyền tắt (Android 11+)
+if (args.Contains("authkeep"))
+{
+    foreach (var s in args.SkipWhile(a => a != "authkeep").Skip(1).First().Split(','))
+    {
+        var sdk = int.TryParse((await AdbClient.ShellAsync(s, "getprop ro.build.version.sdk")).Trim(), out var v) ? v : 0;
+        if (sdk >= 30) await AdbClient.ShellAsync(s, "[ \"$(settings get global adb_allowed_connection_time)\" = 0 ] || settings put global adb_allowed_connection_time 0", 10000);
+        var k = await AdbClient.PersistAdbKeyAsync(s);
+        var window = (await AdbClient.ShellAsync(s, "settings get global adb_allowed_connection_time")).Trim();
+        Check(k.Ok && (sdk < 30 || window == "0"), $"{s}: khoá PC trong adb_keys, uỷ quyền không hết hạn", $"SDK {sdk} · {k.Msg} · adb_allowed_connection_time={window}");
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // autoboot (thoát chế độ sạc): dotnet run -c Release -- autoboot <serial,serial,…> — cài nếu thiếu, không tắt nguồn máy
 if (args.Contains("autoboot"))
 {

@@ -219,6 +219,10 @@ public static class AdbClient
         if (pub == "") return (false, "Không thấy khoá adbkey.pub của máy tính");
         var key = File.ReadAllText(pub).Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
         var frag = key.Substring(40, 40); // đoạn giữa để nhận diện
+        // đã có (trường hợp thường gặp mỗi lần nhận máy): không đẩy tệp, không sinh adb.exe
+        string has = "";
+        try { has = await ShellAsync(addr, $"su -c 'grep -qF {ShellQuote(frag)} /data/misc/adb/adb_keys && echo CP_HAS'", 10000).ConfigureAwait(false); } catch { }
+        if (has.Contains("CP_HAS")) return (true, "Khoá đã có sẵn");
         const string tmp = "/data/local/tmp/.cp_adbkey.pub";
         var push = await RunAsync([.. Sel(addr), "push", pub, tmp], 15000).ConfigureAwait(false);
         if (push.Code != 0) return (false, push.Out);

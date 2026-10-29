@@ -576,4 +576,8 @@ export default {
   "{0} máy bị chương trình khác giữ — Giải phóng": "{0} 台手机被其他程序占用——释放",
   "Lưới dùng bộ mã hoá phần mềm trên điện thoại (mặc định: bộ mã hoá phần cứng, tự chọn theo danh sách encoder của máy)": "网格使用手机软件编码器（默认：硬件编码器，从手机编码器列表自动选择）",
   "Chưa có autoboot: máy có thể đang ở màn hình sạc — bấm nút nguồn máy này một lần": "尚未安装 autoboot：手机可能停在充电画面——按一次电源键",
+  "Khoá đã có sẵn": "密钥已存在",
+  "Đang tự cấp lại quyền ADB qua xwdb…": "正在通过 xwdb 自动重新授权 ADB…",
+  "Đã tự cấp lại quyền ADB cho {0} qua xwdb": "已通过 xwdb 自动为 {0} 重新授权 ADB",
+  "Không tự cấp lại quyền ADB cho {0} qua xwdb: {1}": "无法通过 xwdb 为 {0} 重新授权 ADB：{1}",
 };
