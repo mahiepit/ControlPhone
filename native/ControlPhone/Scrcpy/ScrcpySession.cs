@@ -24,6 +24,11 @@ public sealed class ScrcpyOptions
     /// (bỏ c2.android.* / OMX.google.* — phần mềm). Không tìm được thì để máy dùng bộ mã hoá mặc định.
     /// </summary>
     public bool PreferHardware { get; init; } = true;
+    /// <summary>
+    /// Gửi video_codec_options (lặp khung thưa khi màn hình đứng yên). Tắt cho máy mà bộ mã hoá chết vì nó (S20+ Exynos 990:
+    /// "stack corruption detected" khi có repeat-previous-frame-after).
+    /// </summary>
+    public bool CodecOptions { get; init; } = true;
 }
 
 /// <summary>
@@ -107,6 +112,7 @@ public sealed class ScrcpySession : IDisposable
             await EnsureServerPushedAsync(addr).ConfigureAwait(false);
             // cleanup=false: không để server tự xoá tệp jar dùng chung
             var o = await AdbClient.ShellAsync(addr, $"CLASSPATH={ServerRemote} app_process / com.genymobile.scrcpy.Server {ServerVersion} list_encoders=true cleanup=false log_level=info 2>&1", 15000).ConfigureAwait(false);
+            if (FirstH264Encoder(o) is { } first) DefaultEncoders[key] = first;
             return PickHardwareEncoder(o);
         }
         catch { HwEncoders.TryRemove(key, out _); return null; } // lỗi tạm thời: lần sau đọc lại
@@ -126,6 +132,56 @@ public sealed class ScrcpySession : IDisposable
             fallback ??= name; // không ghi rõ (hw) nhưng cũng không phải bộ mã hoá phần mềm của Android
         }
         return fallback;
+    }
+
+    // bộ mã hoá H.264 mặc định của máy (dòng h264 đầu tiên — scrcpy-server tự dùng nó khi không có video_encoder=)
+    static readonly ConcurrentDictionary<string, string> DefaultEncoders = new();
+
+    public static string? FirstH264Encoder(string listing) =>
+        System.Text.RegularExpressions.Regex.Match(listing, @"--video-codec=h264\s+--video-encoder=(\S+)") is { Success: true } m ? m.Groups[1].Value : null;
+
+    /// <summary>
+    /// Giới hạn độ dài dòng lệnh của scrcpy-server. Samsung (đã gặp: S20+ SM-G985F, Android 13) chép /proc/self/cmdline vào
+    /// một bộ đệm ~256 byte trên stack trong ACodec::reconfigEncoder4OtherApps khi bộ mã hoá khởi động → dòng lệnh dài hơn
+    /// là "stack corruption detected" + server chết → máy không bao giờ lên hình (scrcpy gốc chỉ truyền tham số khác mặc định
+    /// nên ngắn hơn và chạy được). Dài quá thì bỏ dần tham số ít quan trọng.
+    /// </summary>
+    public const int CmdlineBudget = 240;
+    const string CmdlinePrefix = "app_process / com.genymobile.scrcpy.Server ";
+
+    /// <summary>Tham số server, đã rút gọn cho vừa <see cref="CmdlineBudget"/>. encoder = null nếu bị bỏ (dùng mặc định của máy).</summary>
+    public static (List<string> Args, string? Encoder) BuildArgs(ScrcpyOptions o, string scid, string? enc, string? defaultEnc)
+    {
+        // khung I thưa (20 giây); màn hình đứng yên: chỉ lặp lại khung cũ ~1 lần/giây (mặc định scrcpy 10 lần/giây),
+        // màn hình đổi thì vẫn gửi đủ fps. Cần hình ngay thì gửi RESET_VIDEO.
+        var codecOpts = o.Video && o.CodecOptions ? new List<string> { "i-frame-interval:int=20", "repeat-previous-frame-after:long=1000000" } : [];
+        bool logLevel = true, encArg = o.Video && enc != null;
+        List<string> Build()
+        {
+            // chỉ truyền tham số khác mặc định của scrcpy-server (video_codec=h264, control=true, cleanup=true,
+            // downsize_on_error=true, stay_awake=false là mặc định)
+            List<string> a = [ServerVersion, $"scid={scid}", "audio=false"];
+            if (o.Video)
+            {
+                a.AddRange([$"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}"]);
+                if (encArg) a.Add($"video_encoder={enc}");
+            }
+            else a.AddRange(["video=false", "send_device_meta=false"]);
+            a.AddRange(["tunnel_forward=true", "clipboard_autosync=false"]);
+            if (!o.PowerOn) a.Add("power_on=false");
+            if (o.StayAwake) a.Add("stay_awake=true");
+            if (logLevel) a.Add("log_level=info");
+            if (codecOpts.Count > 0) a.Add("video_codec_options=" + string.Join(',', codecOpts));
+            return a;
+        }
+        bool Fits() => CmdlinePrefix.Length + string.Join(' ', Build()).Length + 1 <= CmdlineBudget;
+        // bỏ dần, ít quan trọng trước: khung I thưa → log_level → video_encoder trùng mặc định → lặp khung thưa → video_encoder
+        if (!Fits()) codecOpts.Remove("i-frame-interval:int=20");
+        if (!Fits()) logLevel = false;
+        if (!Fits() && encArg && enc == defaultEnc) encArg = false;
+        if (!Fits()) codecOpts.Clear();
+        if (!Fits() && encArg) { encArg = false; enc = null; }
+        return (Build(), o.Video ? enc : null);
     }
 
     public static bool IsSoftwareEncoder(string name) =>
@@ -148,20 +204,8 @@ public sealed class ScrcpySession : IDisposable
         string? enc = o.Encoder;
         if (enc == null && o.Video && o.PreferHardware) enc = await HardwareEncoderAsync(Addr).ConfigureAwait(false);
         if (Closed) throw new ObjectDisposedException("session");
-        UsedEncoder = o.Video ? enc : null;
-        string[] videoArgs = o.Video
-            ? ["video_codec=h264", $"max_size={o.MaxSize}", $"video_bit_rate={o.BitRate}", $"max_fps={o.MaxFps}", .. (enc != null ? new[] { $"video_encoder={enc}" } : [])]
-            : ["video=false", "send_device_meta=false"];
-        string[] args =
-        [
-            ServerVersion, $"scid={scid}", "log_level=info", "audio=false", .. videoArgs,
-            "tunnel_forward=true", "control=true", "clipboard_autosync=false",
-            $"power_on={(o.PowerOn ? "true" : "false")}", $"stay_awake={(o.StayAwake ? "true" : "false")}",
-            "cleanup=true", "downsize_on_error=true",
-            // khung I thưa (20 giây); màn hình đứng yên: chỉ lặp lại khung cũ ~1 lần/giây (mặc định scrcpy 10 lần/giây),
-            // màn hình đổi thì vẫn gửi đủ fps. Cần hình ngay thì gửi RESET_VIDEO.
-            "video_codec_options=i-frame-interval:int=20,repeat-previous-frame-after:long=1000000",
-        ];
+        var (args, usedEnc) = BuildArgs(o, scid, enc, DefaultEncoders.GetValueOrDefault(AdbClient.SplitAddr(Addr).Serial));
+        UsedEncoder = usedEnc;
         // scrcpy-server tự xoá file jar khi chạy (cleanup) → mỗi phiên dùng một bản sao riêng
         var jar = $"/data/local/tmp/controlphone-{scid}.jar";
         var cmd = $"cp {ServerRemote} {jar} && CLASSPATH={jar} app_process / com.genymobile.scrcpy.Server {string.Join(' ', args)}";

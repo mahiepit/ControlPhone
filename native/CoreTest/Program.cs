@@ -167,6 +167,41 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// máy có bộ mã hoá chết vì video_codec_options: dotnet run -c Release -- codecfallback <serial>
+if (args.Contains("codecfallback"))
+{
+    var serial = args.SkipWhile(a => a != "codecfallback").Skip(1).First();
+    var learn = typeof(ControlPhone.Core.DeviceManager).GetMethod("LearnFromFailure", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    var dev = new PhoneDevice(serial);
+    var noOpt = typeof(PhoneDevice).GetField("NoCodecOptions", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+    async Task<(long Packets, bool Running, string Log)> Run(bool codecOptions)
+    {
+        string ended = "";
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, new() { MaxSize = 480, BitRate = 600_000, MaxFps = 15, PowerOn = false, CodecOptions = codecOptions });
+        s.Ended += r => ended = r;
+        try { await s.StartAsync(); } catch (Exception e) { ended = e.Message; }
+        await Task.Delay(3000);
+        if (codecOptions) learn.Invoke(null, [dev, s, ended]);
+        return (s.PacketsReceived, s.Running, s.LogText);
+    }
+    // dòng lệnh nặng nhất (bộ mã hoá tên dài, không trùng mặc định, power_on=false, có tuỳ chọn) vẫn vừa giới hạn
+    var worst = ControlPhone.Scrcpy.ScrcpySession.BuildArgs(new() { MaxSize = 1280, BitRate = 12_000_000, MaxFps = 60, PowerOn = false, StayAwake = true }, "7fffffff", "c2.qti.avc.encoder.low_latency.secure", "OMX.google.h264.encoder");
+    var hw2 = ControlPhone.Scrcpy.ScrcpySession.BuildArgs(new() { MaxSize = 480, BitRate = 600_000, MaxFps = 15, PowerOn = false }, "5f704175", "OMX.Exynos.AVC.Encoder", "OMX.Exynos.AVC.Encoder");
+    int L(List<string> a) => "app_process / com.genymobile.scrcpy.Server ".Length + string.Join(' ', a).Length + 1;
+    Check(L(worst.Args) <= ControlPhone.Scrcpy.ScrcpySession.CmdlineBudget && L(hw2.Args) <= ControlPhone.Scrcpy.ScrcpySession.CmdlineBudget,
+        "Dòng lệnh server ≤ " + ControlPhone.Scrcpy.ScrcpySession.CmdlineBudget + " byte (Samsung tràn bộ đệm ~256 byte)", $"nặng nhất {L(worst.Args)}: {string.Join(' ', worst.Args)}\n  lưới Exynos {L(hw2.Args)}: {string.Join(' ', hw2.Args)}");
+    var b0 = await Run(false);
+    Console.WriteLine($"không tuỳ chọn (chạy trước): {b0.Packets} gói, running={b0.Running}{(b0.Packets == 0 ? "\n" + b0.Log : "")}");
+    var a = await Run(true);
+    bool crashed = a.Log.Contains("stack corruption") || !a.Running;
+    Console.WriteLine($"có video_codec_options: {a.Packets} gói, running={a.Running}{(crashed ? " · server chết" : "")}");
+    Check(!crashed || (bool)noOpt.GetValue(dev)!, "Server chết vì video_codec_options → máy được đánh dấu bỏ tuỳ chọn", crashed ? "đã đánh dấu: " + noOpt.GetValue(dev) : "máy này không chết, không cần");
+    var b = await Run(false);
+    Check(b.Packets > 0 && b.Running, "Không kèm video_codec_options: có hình, phiên vẫn chạy", $"{b.Packets} gói / 3 s" + (b.Packets == 0 ? "\n" + b.Log : ""));
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // tự cấp lại quyền qua xwdb: dotnet run -c Release -- xwheal <serial USB> — GỠ khoá PC khỏi adb_keys (máy về "chờ cho phép")
 // rồi để ControlPhone tự chữa. Chỉ chạy trên máy có xwdb; luôn khôi phục khoá khi kết thúc.
 if (args.Contains("xwheal"))
@@ -259,7 +294,8 @@ if (args.Contains("hwenc"))
     {
         await s.StartAsync(); await Task.Delay(2500);
         var cmd = await AdbClient.ShellAsync(serial, "ps -A -o ARGS | grep -m1 'com.genymobile.scrcpy.Server 5.0 scid=' | grep -v grep", 8000);
-        Check(s.Running && s.UsedEncoder == hw && cmd.Contains("video_encoder=" + hw) && cmd.Contains("repeat-previous-frame-after:long=1000000"), "Phiên chạy bằng bộ mã hoá phần cứng + lặp khung thưa khi màn hình đứng yên", $"{s.PacketsReceived} gói / 2,5 s");
+        // video_encoder= có thể được bỏ khi trùng bộ mã hoá mặc định của máy (rút gọn dòng lệnh) — vẫn là bộ mã hoá phần cứng
+        Check(s.Running && s.PacketsReceived > 0 && s.UsedEncoder == hw && (cmd.Contains("video_encoder=" + hw) || !cmd.Contains("video_encoder=")) && cmd.Contains("repeat-previous-frame-after:long=1000000"), "Phiên chạy bằng bộ mã hoá phần cứng + lặp khung thưa khi màn hình đứng yên", $"{s.PacketsReceived} gói / 2,5 s" + (s.PacketsReceived == 0 ? $" · running={s.Running}\n{cmd.Trim()}\n{s.LogText}" : ""));
     }
     // không gián đoạn điều khiển khi bật / tắt màn hình lớn (luồng lưới đổi chế độ)
     UiDo(() => { Store.Load(); I18n.Init("vi"); });

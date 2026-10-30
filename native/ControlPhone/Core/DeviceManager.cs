@@ -454,6 +454,22 @@ public sealed class DeviceManager : IDisposable
         s.UsedEncoder != null && (error + "\n" + s.LogText).Contains("encoder", StringComparison.OrdinalIgnoreCase)
         && (error + "\n" + s.LogText).Contains("not found", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// scrcpy-server chết trong mã native của bộ mã hoá khi có video_codec_options (S20+ SM-G985F, Exynos 990, Android 13:
+    /// "stack corruption detected (-fstack-protector)" + Aborted) → máy đó không bao giờ lên hình. Bỏ tuỳ chọn cho máy này.
+    /// </summary>
+    static bool CodecOptionsCrash(ScrcpySession s, string error) =>
+        s.Options.Video && s.Options.CodecOptions
+        && System.Text.RegularExpressions.Regex.IsMatch(error + "\n" + s.LogText, @"stack corruption|Fatal signal|\bAborted\b|SIGSEGV|SIGABRT");
+
+    /// <summary>Học từ lỗi của phiên (bộ mã hoá thiếu / chết vì tuỳ chọn): true = đã đổi cấu hình máy, nên thử lại ngay.</summary>
+    static bool LearnFromFailure(PhoneDevice d, ScrcpySession s, string error)
+    {
+        if (EncoderMissing(s, error)) { d.NoSwEncoder = true; return true; }
+        if (CodecOptionsCrash(s, error)) { d.NoCodecOptions = true; return true; }
+        return false;
+    }
+
     ScrcpyOptions ThumbOptions(PhoneDevice d)
     {
         var s = Store.Settings;
@@ -463,14 +479,14 @@ public sealed class DeviceManager : IDisposable
             // khi máy khởi động lại API đó chưa sẵn sàng → server chết (NullPointerException) → máy vừa reboot không vào được.
             // Giữ máy thức bằng lệnh settings thường (EnsureStayOn) thay thế.
             MaxSize = s.ThumbMaxSize, BitRate = s.ThumbBitRate, MaxFps = s.ThumbFps, PowerOn = s.PowerOnConnect,
-            StayAwake = false, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d), PreferHardware = PreferHw(d),
+            StayAwake = false, Video = ThumbWantsVideo(d), Encoder = GridEncoder(d), PreferHardware = PreferHw(d), CodecOptions = !d.NoCodecOptions,
         };
     }
 
     ScrcpyOptions HqOptions(PhoneDevice d)
     {
         var s = Store.Settings;
-        return new ScrcpyOptions { MaxSize = s.HqMaxSize, BitRate = s.HqBitRate, MaxFps = s.HqFps, PowerOn = s.PowerOnConnect, PreferHardware = !d.NoSwEncoder };
+        return new ScrcpyOptions { MaxSize = s.HqMaxSize, BitRate = s.HqBitRate, MaxFps = s.HqFps, PowerOn = s.PowerOnConnect, PreferHardware = !d.NoSwEncoder, CodecOptions = !d.NoCodecOptions };
     }
 
     void EnsureThumb(PhoneDevice d)
@@ -531,7 +547,7 @@ public sealed class DeviceManager : IDisposable
                 await ui.InvokeAsync(() =>
                 {
                     if (d.Thumb != sess) return;
-                    if (EncoderMissing(sess, e.Message)) { d.NoSwEncoder = true; d.RestartDelayMs = 300; return; } // thử lại ngay với bộ mã hoá mặc định
+                    if (LearnFromFailure(d, sess, e.Message)) { d.RestartDelayMs = 300; return; } // thử lại ngay với cấu hình an toàn hơn
                     d.Error = e.Message;
                     d.StartFails++;
                     d.LastStartError = e.Message;
@@ -595,7 +611,7 @@ public sealed class DeviceManager : IDisposable
         var sess = new ScrcpySession(d.ActiveAddr, new ScrcpyOptions
         {
             MaxSize = s.ThumbMaxSize, BitRate = Math.Max(s.ThumbBitRate, 1_000_000), MaxFps = BoostFps, PowerOn = false, StayAwake = false, Video = true,
-            Encoder = GridEncoder(d), PreferHardware = PreferHw(d),
+            Encoder = GridEncoder(d), PreferHardware = PreferHw(d), CodecOptions = !d.NoCodecOptions,
         });
         d.Boost = sess;
         d.BoostSince = Environment.TickCount64;
@@ -614,14 +630,13 @@ public sealed class DeviceManager : IDisposable
                 ui.BeginInvoke(() => { if (d.Boost == sess) { d.BoostReady = true; dec.Output.MarkDirty(); } });
             }
         };
-        sess.Ended += reason => ui.BeginInvoke(() => { if (EncoderMissing(sess, reason)) d.NoSwEncoder = true; if (d.Boost == sess) ClearBoost(d); });
+        sess.Ended += reason => ui.BeginInvoke(() => { LearnFromFailure(d, sess, reason); if (d.Boost == sess) ClearBoost(d); });
         _ = Task.Run(async () =>
         {
             try { await sess.StartAsync(cts.Token); }
             catch (Exception e)
             {
-                bool missing = EncoderMissing(sess, e.Message);
-                _ = ui.BeginInvoke(() => { if (missing) d.NoSwEncoder = true; if (d.Boost == sess) ClearBoost(d); });
+                _ = ui.BeginInvoke(() => { LearnFromFailure(d, sess, e.Message); if (d.Boost == sess) ClearBoost(d); });
                 sess.Dispose();
             }
         });
@@ -643,7 +658,8 @@ public sealed class DeviceManager : IDisposable
     {
         using var _op = StallWatch.Op("luồng lưới đóng");
         // server kết nối được rồi mới báo "Video encoder ... not found" và thoát → máy không có bộ mã hoá phần mềm: dùng mặc định
-        if (d.Thumb == sess && EncoderMissing(sess, reason)) { d.NoSwEncoder = true; d.RestartDelayMs = 300; }
+        // server chết trong bộ mã hoá vì video_codec_options → bỏ tuỳ chọn cho máy này
+        if (d.Thumb == sess && LearnFromFailure(d, sess, reason)) d.RestartDelayMs = 300;
         if (d.Thumb == sess)
         {
             d.Thumb = null;
@@ -679,15 +695,20 @@ public sealed class DeviceManager : IDisposable
         {
             if (d.Hq != sess) return;
             d.Hq = null;
+            bool learned = LearnFromFailure(d, sess, reason); // vd. bộ mã hoá chết vì video_codec_options → mở lại ngay không kèm
             if (d.HqRefs > 0 && d.HqFails < 3 && d.ActiveAddr != null && serialToId.ContainsKey(d.ActiveAddr))
-                _ = Task.Delay(1500).ContinueWith(_ => ui.BeginInvoke(() => { if (d.HqRefs > 0) EnsureHq(d); }));
+                _ = Task.Delay(learned ? 300 : 1500).ContinueWith(_ => ui.BeginInvoke(() => { if (d.HqRefs > 0) EnsureHq(d); }));
         });
         _ = Task.Run(async () =>
         {
             try { await sess.StartAsync(cts.Token); _ = ui.BeginInvoke(() => d.HqFails = 0); }
             catch (Exception e)
             {
-                _ = ui.BeginInvoke(() => { d.HqFails++; Log?.Invoke($"Không mở được luồng nét ({LabelOf(d)}): {e.Message}", true); });
+                _ = ui.BeginInvoke(() =>
+                {
+                    if (LearnFromFailure(d, sess, e.Message)) { if (d.HqRefs > 0) _ = Task.Delay(300).ContinueWith(_ => ui.BeginInvoke(() => { if (d.HqRefs > 0) EnsureHq(d); })); return; }
+                    d.HqFails++; Log?.Invoke($"Không mở được luồng nét ({LabelOf(d)}): {e.Message}", true);
+                });
                 ScrcpySession.ForgetPushed(sess.Addr);
                 sess.Dispose();
             }

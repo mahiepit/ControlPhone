@@ -133,6 +133,7 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     // luồng tăng tốc cho máy đang được trỏ chuột / điều khiển (lưới chạy thưa cho nhẹ, máy đang thao tác thì mượt)
     /// <summary>Máy không có bộ mã hoá phần mềm OMX.google → dùng bộ mã hoá mặc định.</summary>
     internal bool NoSwEncoder;
+    internal bool NoCodecOptions; // bộ mã hoá của máy chết khi có video_codec_options (S20+ Exynos 990)
     internal ScrcpySession? Boost;
     internal H264Decoder? BoostDecoder;
     internal volatile bool BoostReady;
