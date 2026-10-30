@@ -167,6 +167,56 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// máy mới chờ cho phép, chưa biết IP xwdb: dotnet run -c Release -- xwnew <serial> — gỡ khoá (máy về "unauthorized"), tìm xwdb trong LAN, chữa
+if (args.Contains("xwnew"))
+{
+    var s = args.SkipWhile(a => a != "xwnew").Skip(1).First();
+    async Task<string> State() => (await AdbClient.RunAsync(["devices"], 8000)).Out.Split('\n').Select(l => l.Trim().Split('\t')).FirstOrDefault(f => f[0] == s)?.ElementAtOrDefault(1) ?? "(không thấy)";
+    var ip = System.Text.RegularExpressions.Regex.Match(await AdbClient.ShellAsync(s, "ip -f inet addr show wlan0 | grep -m1 inet"), @"inet ([\d.]+)").Groups[1].Value;
+    var frag = File.ReadAllText(AdbClient.PubKeyPath()).Trim().Split(' ')[0].Substring(40, 40);
+    // IP của các máy khác đang kết nối USB bình thường (ControlPhone biết qua thông tin pin/IP) → không cần thử
+    var skip = new HashSet<string>();
+    foreach (var l in (await AdbClient.RunAsync(["devices"], 8000)).Out.Split('\n').Select(x => x.Trim().Split('\t')).Where(f => f.Length == 2 && f[1] == "device" && f[0] != s && !f[0].Contains(':')))
+        try { var m = System.Text.RegularExpressions.Regex.Match(await AdbClient.ShellAsync(l[0], "ip -f inet addr show wlan0 | grep -m1 inet", 5000), @"inet ([\d.]+)"); if (m.Success) skip.Add(m.Groups[1].Value); } catch { }
+    var hide = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
+    try
+    {
+        await AdbClient.RunAsync(["connect", ip + ":15555"], 10000);
+        await AdbClient.ShellAsync(ip + ":15555", $"su -c 'sed -i \"/{frag.Replace("/", "\\/")}/d\" /data/misc/adb/adb_keys'", 10000);
+        await AdbClient.RunAsync(["disconnect", ip + ":15555"], 8000);
+        await AdbClient.RunAsync(["-s", s, "reconnect"], 8000);
+        string st = "";
+        for (int i = 0; i < 20 && st != "unauthorized"; i++) { await Task.Delay(1000); st = await State(); }
+        Check(st == "unauthorized", "Gây lỗi: máy về \"unauthorized\"", st);
+        var sw4 = System.Diagnostics.Stopwatch.StartNew();
+        var found = await ControlPhone.Core.DeviceManager.FindXwdbAsync([s], skip, hide);
+        Check(found.TryGetValue(s, out var xw) && xw == ip + ":15555", "Tìm thấy xwdb của máy trong LAN (ghép theo serial USB)", $"{(found.TryGetValue(s, out var x2) ? x2 : "(không thấy)")} · bỏ qua {skip.Count} IP đã biết · {sw4.ElapsedMilliseconds} ms");
+        var r = await ControlPhone.Core.DeviceManager.HealViaXwdbAsync(s, ip + ":15555", null);
+        Check(r == "" && await State() == "device", "Tự cấp lại quyền", $"{(r == "" ? "OK" : r)} · {await State()} · tổng {sw4.ElapsedMilliseconds} ms");
+    }
+    finally
+    {
+        if (await State() != "device") Console.WriteLine("Khôi phục: " + await ControlPhone.Core.DeviceManager.HealViaXwdbAsync(s, ip + ":15555", null));
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
+// chữa máy đang "unauthorized" qua xwdb: dotnet run -c Release -- xwfix <serial>=<ip:15555>,…
+if (args.Contains("xwfix"))
+{
+    foreach (var pair in args.SkipWhile(a => a != "xwfix").Skip(1).First().Split(','))
+    {
+        var (s, xw) = (pair.Split('=')[0], pair.Split('=')[1]);
+        var sw3 = System.Diagnostics.Stopwatch.StartNew();
+        var r = await ControlPhone.Core.DeviceManager.HealViaXwdbAsync(s, xw, null);
+        var st = (await AdbClient.RunAsync(["devices"], 8000)).Out.Split('\n').Select(l => l.Trim().Split('\t')).FirstOrDefault(f => f[0] == s)?.ElementAtOrDefault(1) ?? "(không thấy)";
+        Check(r == "" && st == "device", $"{s}: tự cấp lại quyền qua {xw}", $"{(r == "" ? "OK" : r)} · {st} · {sw3.ElapsedMilliseconds} ms");
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // máy có bộ mã hoá chết vì video_codec_options: dotnet run -c Release -- codecfallback <serial>
 if (args.Contains("codecfallback"))
 {

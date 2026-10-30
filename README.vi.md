@@ -75,6 +75,8 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
   2. cấy lại khoá;
   3. kết nối lại USB;
   4. đóng hộp thoại còn treo.
+
+  Máy mới, chưa biết địa chỉ xwdb, được tìm bằng cách quét cổng 15555 trong mạng LAN của máy tính và ghép theo serial USB.
 - **Autoboot (máy root, Android 7+, ControlPhone 2.1.2+)** — box phone không có nút nguồn: máy tắt khi đang cắm cáp (hoặc đôi khi sau khi khởi động lại) sẽ dừng ở màn hình sạc và biến mất khỏi USB. ControlPhone tự cài `/system/etc/init/n9autoboot.rc` một lần cho mỗi máy (đã có thì bỏ qua, không khởi động lại máy), để máy rơi vào chế độ sạc sẽ tự khởi động thẳng vào Android. Nhật ký cài ở `data\logs\autoboot.log`.
 - **OTG** — mở `scrcpy --otg` (bàn phím/chuột qua USB, không cần Gỡ lỗi USB).
 - Mở cửa sổ scrcpy gốc cho từng máy khi cần.

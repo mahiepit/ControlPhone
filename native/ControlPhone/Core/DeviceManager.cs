@@ -53,7 +53,7 @@ public sealed class DeviceManager : IDisposable
             await AdbClient.StartServerAsync();
             await AdbClient.TrackDevicesAsync(list => ui.BeginInvoke(() => OnTrack(list)), e => ui.BeginInvoke(() => Log?.Invoke("adb: " + e, true)), cts.Token);
         });
-        infoTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => RefreshAllInfo(), ui);
+        infoTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { RefreshAllInfo(); HealUnauthorized(); }, ui);
         wifiTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => _ = AutoReconnectWifiAsync(), ui);
         infoTimer.Start(); wifiTimer.Start();
     }
@@ -134,7 +134,9 @@ public sealed class DeviceManager : IDisposable
     bool TryHealViaXwdb(string addr)
     {
         var serial = AdbClient.SplitAddr(addr).Serial;
-        if (AdbClient.IsWifiSerial(addr) || !Store.State.Devices.TryGetValue(serial, out var meta) || meta.Xwdb is not { } xw) return false;
+        if (AdbClient.IsWifiSerial(addr)) return false;
+        // máy mới (chưa từng được cấp quyền) → chưa biết IP của xwdb: tìm trong mạng LAN
+        if (!Store.State.Devices.TryGetValue(serial, out var meta) || meta.Xwdb is not { } xw) return DiscoverXwdb();
         if (healing.ContainsKey(xw)) return true;
         long now = Environment.TickCount64;
         if (lastHeal.TryGetValue(serial, out var t) && now - t < 60_000) return false;
@@ -151,6 +153,98 @@ public sealed class DeviceManager : IDisposable
             ui.BeginInvoke(() => Log?.Invoke(ok ? I18n.T("Đã tự cấp lại quyền ADB cho {0} qua xwdb", serial) : I18n.T("Không tự cấp lại quyền ADB cho {0} qua xwdb: {1}", serial, result), !ok));
         });
         return true;
+    }
+
+    bool discovering;
+    long lastDiscover = -120_000;
+
+    /// <summary>Thử lại định kỳ cho máy USB vẫn "chờ cho phép" (danh sách adb không đổi thì OnTrack không chạy lại).</summary>
+    void HealUnauthorized()
+    {
+        if (stopping) return;
+        foreach (var addr in serialStates.Where(kv => kv.Value == "unauthorized").Select(kv => kv.Key).ToList()) TryHealViaXwdb(addr);
+    }
+
+    /// <summary>
+    /// Tìm xwdb của các máy USB đang "chờ cho phép" mà chưa biết IP: quét cổng 15555 trong mạng LAN (bỏ qua IP đã biết),
+    /// vào từng máy lạ, đọc serial USB (configfs của USB gadget — đúng cả với ROM nhân bản ro.serialno) rồi ghép với máy đang
+    /// chờ. Tìm thấy → nhớ địa chỉ và tự cấp lại quyền. Tối đa 1 lần / 2 phút. Trả về true nếu đang tìm.
+    /// </summary>
+    bool DiscoverXwdb()
+    {
+        if (discovering) return true;
+        long now = Environment.TickCount64;
+        if (now - lastDiscover < 120_000) return false;
+        var want = serialStates.Where(kv => kv.Value == "unauthorized" && !AdbClient.IsWifiSerial(kv.Key)).Select(kv => AdbClient.SplitAddr(kv.Key).Serial).ToHashSet();
+        if (want.Count == 0) return false;
+        discovering = true; lastDiscover = now;
+        var known = Store.State.Devices.Values.Select(m => m.Xwdb?.Split(':')[0]).Concat(byId.Values.Select(d => d.Ip))
+            .Where(ip => !string.IsNullOrEmpty(ip)).ToHashSet()!;
+        _ = Task.Run(async () =>
+        {
+            Dictionary<string, string> found = [];
+            try { found = await FindXwdbAsync(want, known!, healing); }
+            catch { /* chỉ là tìm thêm */ }
+            ui.BeginInvoke(() =>
+            {
+                discovering = false;
+                if (found.Count == 0) return;
+                foreach (var (s, a) in found) Store.Meta(s).Xwdb = a;
+                Store.Save();
+                foreach (var addr in serialStates.Where(kv => kv.Value == "unauthorized" && found.ContainsKey(AdbClient.SplitAddr(kv.Key).Serial)).Select(kv => kv.Key).ToList())
+                    TryHealViaXwdb(addr);
+            });
+        });
+        return true;
+    }
+
+    /// <summary>serial USB → "ip:15555" của xwdb cho các máy trong <paramref name="want"/>. hide: địa chỉ đang kết nối tạm (không nhận thành máy).</summary>
+    public static async Task<Dictionary<string, string>> FindXwdbAsync(HashSet<string> want, HashSet<string> skipIps, System.Collections.Concurrent.ConcurrentDictionary<string, byte> hide)
+    {
+        var found = new Dictionary<string, string>();
+        foreach (var ip in await OpenXwdbHostsAsync(skipIps))
+        {
+            if (found.Count == want.Count) break;
+            var a = ip + ":15555";
+            hide[a] = 0;
+            try
+            {
+                if (!(await AdbClient.RunAsync(["connect", a], 8000)).Out.Contains("connected to")) continue;
+                string ids = "";
+                for (int i = 0; i < 3 && ids == ""; i++)
+                    try { ids = await AdbClient.ShellAsync(a, "su -c 'cat /config/usb_gadget/*/strings/0x409/serialnumber' 2>/dev/null; getprop ro.boot.serialno; getprop ro.serialno", 8000); } catch { await Task.Delay(800); }
+                var match = ids.Split('\n').Select(x => x.Trim()).FirstOrDefault(want.Contains);
+                if (match != null) found[match] = a;
+            }
+            finally
+            {
+                await AdbClient.RunAsync(["disconnect", a], 5000);
+                hide.TryRemove(a, out _);
+            }
+        }
+        return found;
+    }
+
+    /// <summary>Các IP trong mạng LAN (các card mạng của PC) đang mở cổng 15555 của xwdb, trừ IP đã biết.</summary>
+    static async Task<List<string>> OpenXwdbHostsAsync(HashSet<string> skip)
+    {
+        var hosts = Actions.LocalSubnets().Select(s => s.Subnet).Distinct().SelectMany(sn => Enumerable.Range(1, 254).Select(i => $"{sn}.{i}")).Where(h => !skip.Contains(h)).ToList();
+        var open = new System.Collections.Concurrent.ConcurrentBag<string>();
+        using var lim = new SemaphoreSlim(128);
+        await Task.WhenAll(hosts.Select(async h =>
+        {
+            await lim.WaitAsync();
+            try
+            {
+                using var c = new System.Net.Sockets.TcpClient();
+                using var t = new CancellationTokenSource(500);
+                await c.ConnectAsync(h, 15555, t.Token);
+                open.Add(h);
+            }
+            catch { }
+            finally { lim.Release(); }
+        }));
+        return open.ToList();
     }
 
     /// <summary>Cấy lại khoá qua xwdb, ngắt xwdb, kết nối lại USB, đóng hộp thoại "Cho phép gỡ lỗi USB" còn treo. "" = thành công.</summary>
