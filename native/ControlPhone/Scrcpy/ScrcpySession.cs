@@ -52,6 +52,8 @@ public sealed class ScrcpySession : IDisposable
     public bool Running { get; private set; }
     public bool Closed { get; private set; }
     public long BytesReceived, PacketsReceived, KeepAlives;
+    /// <summary>Mốc thời gian (µs, tính từ khung đầu tiên) của gói video vừa nhận — để đo độ trễ / giật của luồng.</summary>
+    public long LastPtsUs;
 
     /// <summary>(isConfig, isKey, data) — gọi trên luồng đọc video.</summary>
     public event Action<bool, bool, byte[]>? Packet;
@@ -339,6 +341,7 @@ public sealed class ScrcpySession : IDisposable
                 Interlocked.Add(ref BytesReceived, size + 12);
                 Interlocked.Increment(ref PacketsReceived);
                 Interlocked.Exchange(ref lastIo, Environment.TickCount64);
+                LastPtsUs = (long)(BinaryPrimitives.ReadUInt64BigEndian(h12) & 0x3FFF_FFFF_FFFF_FFFF);
                 Packet?.Invoke((hi & 0x40000000) != 0, (hi & 0x20000000) != 0, data);
             }
         }

@@ -167,6 +167,75 @@ if (args.Contains("otheradb"))
     return 0;
 }
 
+// đo độ trễ từng chặng khi điều khiển 1 máy: dotnet run -c Release -- lag <serial>
+if (args.Contains("lag"))
+{
+    var serial = args.SkipWhile(a => a != "lag").Skip(1).First();
+    static string Stat(List<double> v, string unit = "ms")
+    {
+        if (v.Count == 0) return "(không có)";
+        var o = v.OrderBy(x => x).ToList();
+        return $"TB {o.Average():0.#} · p50 {o[o.Count / 2]:0.#} · p95 {o[(int)(o.Count * 0.95)]:0.#} · max {o[^1]:0.#} {unit} (n={o.Count})";
+    }
+    Console.WriteLine("Máy: " + (await AdbClient.ShellAsync(serial, "echo $(getprop ro.boot.em.model) $(getprop ro.bootloader) Android $(getprop ro.build.version.release) · load $(cut -d' ' -f1-3 /proc/loadavg) · $(nproc) nhân")).Trim());
+    // 1. adb server + USB: lệnh nhỏ nhất đi về
+    var shellRtt = new List<double>();
+    for (int i = 0; i < 15; i++) { var t = System.Diagnostics.Stopwatch.GetTimestamp(); await AdbClient.ShellAsync(serial, "true", 8000); shellRtt.Add(System.Diagnostics.Stopwatch.GetElapsedTime(t).TotalMilliseconds); await Task.Delay(100); }
+    Console.WriteLine("adb shell:true đi về:           " + Stat(shellRtt));
+    // 2. luồng hình: tốc độ thật, giật (khoảng cách giữa các gói), độ trễ thêm so với gói nhanh nhất, giải mã, lệnh → thấy hình
+    double TopB(byte[] px, int w, int h) { long sum = 0; int n = 0; for (int y = 0; y < h / 4; y += 4) for (int x = 0; x < w; x += 4) { int i = (y * w + x) * 4; sum += px[i] + px[i + 1] + px[i + 2]; n++; } return n > 0 ? sum / (3.0 * n) : 0; }
+    foreach (var (name, opt) in new (string, ControlPhone.Scrcpy.ScrcpyOptions)[]
+    {
+        ("màn lớn đang cài 1280p 4M 20fps, phần cứng", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 20, PowerOn = false }),
+        ("1280p 4M 30fps, phần cứng", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 30, PowerOn = false }),
+        ("1280p 4M 60fps, phần cứng", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 60, PowerOn = false }),
+        ("1280p 4M 30fps, phần cứng, không tuỳ chọn", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 30, PowerOn = false, CodecOptions = false }),
+        ("1280p 4M 30fps, phần mềm", new() { MaxSize = 1280, BitRate = 4_000_000, MaxFps = 30, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+        ("480p 1M 30fps, phần cứng", new() { MaxSize = 480, BitRate = 1_000_000, MaxFps = 30, PowerOn = false }),
+        ("480p 1M 30fps, phần mềm", new() { MaxSize = 480, BitRate = 1_000_000, MaxFps = 30, PowerOn = false, Encoder = "OMX.google.h264.encoder" }),
+    })
+    {
+        // dec khai báo trước s: phiên phải đóng trước (luồng video còn gọi dec.Feed), rồi mới giải phóng bộ giải mã
+        using var dec = new ControlPhone.Video.H264Decoder(2);
+        using var s = new ControlPhone.Scrcpy.ScrcpySession(serial, opt);
+        var gaps = new List<double>(); var ages = new List<double>(); var decMs = new List<double>();
+        long last = 0; bool rec = false;
+        s.Packet += (c, k, d) =>
+        {
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (!c && rec) lock (gaps) { if (last != 0) gaps.Add(System.Diagnostics.Stopwatch.GetElapsedTime(last, now).TotalMilliseconds); ages.Add(now * 1000.0 / System.Diagnostics.Stopwatch.Frequency - s.LastPtsUs / 1000.0); }
+            if (!c) last = now;
+            dec.Feed(c, k, d);
+            if (!c && rec) lock (gaps) decMs.Add(System.Diagnostics.Stopwatch.GetElapsedTime(now).TotalMilliseconds);
+        };
+        try { await s.StartAsync(); } catch (Exception e) { Console.WriteLine($"[{name}] lỗi {e.Message}"); continue; }
+        await Task.Delay(1500); rec = true; long b0 = s.BytesReceived;
+        await Task.Delay(6000); rec = false;
+        double mbps = (s.BytesReceived - b0) * 8 / 6.0 / 1e6;
+        List<double> g, a, dm; lock (gaps) { g = [.. gaps]; a = [.. ages]; dm = [.. decMs]; }
+        double baseAge = a.Count > 0 ? a.Min() : 0;
+        var e2e = new List<double>();
+        for (int i = 0; i < 3; i++)
+        {
+            double baseB = -1; dec.Output.MarkDirty(); dec.Output.TryTake((px, w, h) => baseB = TopB(px, w, h));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            s.Send(ControlPhone.Scrcpy.ControlMessages.Empty(ControlPhone.Scrcpy.ControlMessages.ExpandNotificationPanel));
+            double? hit = null;
+            while (System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds < 3000 && hit == null)
+            {
+                double b = -1;
+                if (dec.Output.TryTake((px, w, h) => b = TopB(px, w, h)) && baseB >= 0 && Math.Abs(b - baseB) > 18) hit = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+                await Task.Delay(3);
+            }
+            if (hit != null) e2e.Add(hit.Value);
+            s.Send(ControlPhone.Scrcpy.ControlMessages.Empty(ControlPhone.Scrcpy.ControlMessages.CollapsePanels));
+            await Task.Delay(1500);
+        }
+        Console.WriteLine($"[{name}]\n   thực tế {g.Count / 6.0:0.#} fps · {mbps:0.##} Mbps\n   giữa 2 khung: {Stat(g)}\n   trễ thêm so với khung nhanh nhất: {Stat(a.Select(x => x - baseAge).ToList())}\n   giải mã trên PC: {Stat(dm)}\n   lệnh → thấy hình đổi: {Stat(e2e)}");
+    }
+    return 0;
+}
+
 // máy mới chờ cho phép, chưa biết IP xwdb: dotnet run -c Release -- xwnew <serial> — gỡ khoá (máy về "unauthorized"), tìm xwdb trong LAN, chữa
 if (args.Contains("xwnew"))
 {
