@@ -18,6 +18,15 @@ public sealed class Settings
     public bool SoftwareEncoder { get; set; }
     /// <summary>Phiên bản cài đặt (để chuyển đổi một lần khi đổi mặc định).</summary>
     public int Rev { get; set; }
+    /// <summary>
+    /// Chế độ OTG/LAN: tự quét mạng LAN tìm điện thoại đang mở adb qua mạng (box chuyển máy sang cổng mạng dây — OTG — thì
+    /// không còn USB tới PC) và tự kết nối; máy root cắm USB lần đầu được tự bật adb qua mạng.
+    /// </summary>
+    public bool LanAuto { get; set; }
+    /// <summary>Cổng adb qua mạng cần tìm, cách nhau bằng dấu phẩy (5555 = adb tcpip; 15555 = xwdb của Xiaowei).</summary>
+    public string LanPorts { get; set; } = "5555";
+    /// <summary>Phóng to 1 máy: ẩn lưới, các máy khác không giải mã / không vẽ nữa (vẫn nhận điều khiển đồng bộ).</summary>
+    public bool FocusViewer { get; set; } = true;
     public int HqMaxSize { get; set; } = 1280;
     public int HqBitRate { get; set; } = 4_000_000;
     public int HqFps { get; set; } = 30;
@@ -56,6 +65,8 @@ public sealed class DeviceMeta
     /// để tự cấy lại khoá. Cập nhật theo IP mới nhất.
     /// </summary>
     public string? Xwdb { get; set; }
+    /// <summary>Đã bật adb qua mạng cho máy này (chế độ OTG/LAN) — chỉ tự làm 1 lần.</summary>
+    public bool LanReady { get; set; }
     /// <summary>Chế độ "chỉ nhập từ PC": dùng bàn phím ControlPhone (không hiện bàn phím trên điện thoại).</summary>
     public bool PcKeyboard { get; set; }
     /// <summary>Bàn phím trước khi bật chế độ trên (để trả lại khi tắt).</summary>

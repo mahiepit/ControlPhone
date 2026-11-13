@@ -35,6 +35,7 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
 **Lưới màn hình trực tiếp**
 - Xem tất cả máy trong lưới, đổi kích thước ô, "vừa khít màn hình" bằng 1 nút.
 - Lưới dùng luồng nhẹ (360p–720p, tuỳ chỉnh); màn hình lớn dùng luồng nét riêng (tới 1280px / 30 fps).
+- Khi đang phóng to 1 máy (ControlPhone 2.2+), lưới được ẩn và các máy khác không được giải mã hay vẽ nữa, máy tính chỉ xử lý hình của đúng máy đó. Phiên của các máy khác vẫn mở, nên thao tác đồng bộ vẫn tới đủ máy và đóng màn hình lớn là lưới có hình lại ngay (tắt được trong Cài đặt).
 - Chỉ giải mã các ô đang nhìn thấy; thu nhỏ cửa sổ là tạm dừng hết.
 - **Tạm dừng xem** 1 máy hoặc 1 nhóm (máy ngừng gửi hình nhưng vẫn điều khiển được).
 - **Chỉ hiển thị các máy này**: ẩn và tạm dừng mọi máy khác, bấm 1 nút để trở lại.
@@ -77,6 +78,15 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
   4. đóng hộp thoại còn treo.
 
   Máy mới, chưa biết địa chỉ xwdb, được tìm bằng cách quét cổng 15555 trong mạng LAN của máy tính và ghép theo serial USB.
+- **Box OTG / LAN (ControlPhone 2.2+, tự bật khi cần)** — box phone farm chuyển điện thoại sang cổng mạng dây ("chế độ OTG") thì không còn cáp USB tới máy tính. Khi bật *Chế độ OTG/LAN* (Cài đặt):
+  - ControlPhone quét mạng LAN của máy tính 20 giây một lần, tìm điện thoại đang mở ADB qua mạng (cổng 5555, đổi được) và tự kết nối. Cắm máy vào box là máy tự hiện, không phải nhập IP hay bấm quét.
+  - Mục *OTG/LAN: bật ADB qua mạng* chuẩn bị các máy đang cắm USB trước khi gạt box sang OTG. Máy root giữ cổng sau khi khởi động lại, và máy root cắm USB lần đầu được tự chuẩn bị.
+  - Máy kết nối qua mạng vẫn về đúng ô và số thứ tự như khi cắm USB: ControlPhone đọc serial USB thật của máy (máy root), đúng cả với ROM nhân bản `ro.serialno`.
+- **Recovery / TWRP (ControlPhone 2.2+)** — máy khởi động vào recovery vẫn giữ ô và số thứ tự, và hiện màn hình recovery, chạm được, cả trên lưới lẫn màn hình lớn.
+  - Recovery không có Android, nên ControlPhone đẩy một helper native nhỏ (`native/recovery/cprec.c`) lên `/tmp` để đọc framebuffer và bơm chạm/phím.
+  - Board không màn hình không có thiết bị cảm ứng, nên helper tạo cảm ứng ảo.
+  - Menu của ô có *Khởi động vào Recovery (TWRP)* và *Khởi động lại vào Android*.
+  - Hiện chỉ hỗ trợ recovery dùng framebuffer (fbdev).
 - **Autoboot (máy root, Android 7+, ControlPhone 2.1.2+)** — box phone không có nút nguồn: máy tắt khi đang cắm cáp (hoặc đôi khi sau khi khởi động lại) sẽ dừng ở màn hình sạc và biến mất khỏi USB. ControlPhone tự cài `/system/etc/init/n9autoboot.rc` một lần cho mỗi máy (đã có thì bỏ qua, không khởi động lại máy), để máy rơi vào chế độ sạc sẽ tự khởi động thẳng vào Android. Nhật ký cài ở `data\logs\autoboot.log`.
 - **OTG** — mở `scrcpy --otg` (bàn phím/chuột qua USB, không cần Gỡ lỗi USB).
 - Mở cửa sổ scrcpy gốc cho từng máy khi cần.

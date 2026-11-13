@@ -89,6 +89,7 @@ public partial class MainWindow
         new("ROOT: kiểm tra quyền root", "shield", () => Batch("rootcheck", SelIds(), null, "Kiểm tra root", true)),
         new("ROOT: cấy khoá uỷ quyền (khỏi hỏi \"Cho phép gỡ lỗi USB\")", "key", () => Batch("pushkey", SelIds(), null, "Cấy khoá uỷ quyền", true)),
         new("ROOT: bật ADB WiFi cố định (cổng 5555)", "shield", RootAdbWifi),
+        new("OTG/LAN: bật ADB qua mạng (trước khi chuyển box sang OTG)", "wifi", LanPrepSel),
         null,
         new("Chỉ hiển thị các máy đã chọn", "eye", () => { var ids = SelIds(); if (ids.Count > 0) SetSolo(ids); }),
         Store.State.Solo != null ? new MenuSpec("Hiện lại tất cả máy", "grid", () => SetSolo(null)) : null,
@@ -150,6 +151,25 @@ public partial class MainWindow
     {
         if (d.Pending) { Ui.ShowMenu([new MenuSpec(d.Error != "" ? d.Error : d.Status, "info", null)]); return; }
         List<string> one = [d.Id];
+        if (d.InRecovery)
+        {
+            // máy đang ở recovery (TWRP): không có Android nên chỉ có các thao tác của recovery
+            Ui.ShowMenu(
+            [
+                new(T("Phóng to #{0}", d.Num), "maximize", () => OpenViewer(d.Id)),
+                new("TWRP: vuốt mở khoá màn hình", "unlock", () => PhoneControl.Act([d], "unlock")),
+                new("Lệnh tuỳ chỉnh…", "terminal", () => DlgShell(one)),
+                new("Đổi tên…", "type", () => RenameDevice(d)),
+                null,
+                new("Kết nối lại luồng hình", "refresh", () => manager.RestartSessions(d)),
+                new("Khởi động lại vào Recovery", "refresh", () => Batch("rebootrecovery", one, null, "Khởi động vào Recovery")),
+                new("Khởi động lại vào Android", "power", () =>
+                {
+                    if (Ui.Confirm("Khởi động lại", T("Khởi động lại máy \"{0}\"?", d.DisplayName), "Khởi động lại", true)) Batch("reboot", one, null, "Khởi động lại");
+                }, Danger: true),
+            ]);
+            return;
+        }
         var ids = MenuTargets(d);
         var n = ids.Count > 1 ? T(" ({0} máy)", ids.Count) : "";
         void ShellOn(string cmd, string title) => Batch("shell", ids, new() { ["cmd"] = cmd }, T(title) + n);
@@ -182,6 +202,11 @@ public partial class MainWindow
             new("Khởi động lại máy", "power", () =>
             {
                 if (Ui.Confirm("Khởi động lại", T("Khởi động lại máy \"{0}\"?", d.DisplayName), "Khởi động lại", true)) Batch("reboot", one, null, "Khởi động lại");
+            }, Danger: true),
+            new("Khởi động vào Recovery (TWRP)", "refresh", () =>
+            {
+                if (Ui.Confirm("Khởi động vào Recovery", T("Khởi động máy \"{0}\" vào Recovery (TWRP)? ControlPhone sẽ hiện màn hình recovery và điều khiển được; muốn quay lại thì chọn \"Khởi động lại vào Android\".", d.DisplayName), "Vào Recovery", true))
+                    Batch("rebootrecovery", one, null, "Khởi động vào Recovery");
             }, Danger: true),
         ]);
     }
@@ -266,6 +291,22 @@ public partial class MainWindow
         int wifiOnly = ids.Count(id => manager.Get(id)?.HasUsb != true);
         if (wifiOnly > 0 && !Ui.Confirm("WiFi → USB", T("{0} máy chưa cắm cáp USB sẽ mất kết nối cho tới khi cắm cáp. Tiếp tục?", wifiOnly), "Chuyển về USB", true)) return;
         Batch("tousb", ids, null, "WiFi → USB", true);
+    }
+
+    /// <summary>
+    /// Chế độ OTG/LAN (box chuyển điện thoại sang cổng mạng dây, không còn USB tới PC): bật adb qua mạng trên các máy đang cắm
+    /// USB — bước "Activate port" của các phần mềm farm khác. Sau đó gạt box sang OTG là ControlPhone tự nối lại qua mạng.
+    /// </summary>
+    void LanPrepSel()
+    {
+        var ids = SelIds().Where(id => manager.Get(id)?.HasUsb == true).ToList();
+        if (ids.Count == 0) { Ui.Toast("Hãy chọn các máy đang cắm USB trước", "err"); return; }
+        int noRoot = ids.Count(id => manager.Get(id)?.Root != true);
+        var msg = T("Bật ADB qua mạng trên {0} máy đang cắm USB? ADB trên máy khởi động lại 1 lần (mất kết nối vài giây). Sau đó chuyển box sang OTG/LAN là ControlPhone tự kết nối lại qua mạng.", ids.Count)
+            + (noRoot > 0 ? "\n\n" + T("{0} máy không root: chỉ giữ tới khi máy khởi động lại, và nếu lúc cho phép gỡ lỗi chưa tick \"Luôn cho phép từ máy tính này\" thì máy sẽ hỏi uỷ quyền lại.", noRoot) : "");
+        if (!Ui.Confirm("OTG/LAN", msg, "Bật", noRoot > 0)) return;
+        if (!Store.Settings.LanAuto) { Store.Settings.LanAuto = true; Store.Save(); Ui.Toast("Đã bật chế độ OTG/LAN: tự tìm máy trong mạng LAN", "ok", 5000); }
+        Batch("lanprep", ids, null, "OTG/LAN: bật ADB qua mạng", true);
     }
 
     void RootAdbWifi()

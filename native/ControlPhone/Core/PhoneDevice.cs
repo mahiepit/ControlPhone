@@ -78,6 +78,7 @@ public sealed class PhoneDevice : INotifyPropertyChanged
         {
             if (Pending || Status == "offline") return "err";
             if (Status == "connecting" && StartFails >= 3) return "err"; // lỗi lặp lại: báo rõ, không quay vòng "đang kết nối" mãi
+            if (InRecovery && IsOnline) return HasFrame ? "" : "spin"; // recovery: ô luôn có hình (cùng nguồn với màn hình lớn)
             if ((Zoomed || Paused) && IsOnline) return "soft";
             if (Status == "connecting" || !HasFrame) return "spin";
             return Live ? "" : "pause";
@@ -129,7 +130,10 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     /// <summary>Phiên lưới cũ tạm giữ điều khiển trong lúc phiên mới đang khởi động (không làm gián đoạn thao tác).</summary>
     internal ScrcpySession? PrevThumb;
     /// <summary>Khung cho ô lưới: luồng "tăng tốc" (máy đang trỏ chuột, 30 khung/giây) khi đã có hình, ngược lại luồng lưới.</summary>
-    public FrameBuffer? Frames => BoostReady && BoostDecoder != null ? BoostDecoder.Output : ThumbDecoder?.Output;
+    public FrameBuffer? Frames => Recovery != null ? Recovery.Output : BoostReady && BoostDecoder != null ? BoostDecoder.Output : ThumbDecoder?.Output;
+    /// <summary>Máy đang ở recovery (TWRP...): hình + điều khiển qua helper riêng, không có phiên scrcpy nào.</summary>
+    internal Recovery.RecoverySession? Recovery;
+    public bool InRecovery => Recovery != null;
     // luồng tăng tốc cho máy đang được trỏ chuột / điều khiển (lưới chạy thưa cho nhẹ, máy đang thao tác thì mượt)
     /// <summary>Máy không có bộ mã hoá phần mềm OMX.google → dùng bộ mã hoá mặc định.</summary>
     internal bool NoSwEncoder;
@@ -139,7 +143,7 @@ public sealed class PhoneDevice : INotifyPropertyChanged
     internal volatile bool BoostReady;
     internal CancellationTokenSource? BoostOffCts;
     internal long BoostSince;
-    public FrameBuffer? HqFrames => HqDecoder?.Output;
+    public FrameBuffer? HqFrames => Recovery != null ? Recovery.HqOutput : HqDecoder?.Output;
 
     public PhoneDevice(string id) { Id = id; }
 

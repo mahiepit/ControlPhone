@@ -115,9 +115,28 @@ public partial class MainWindow : Window
             PerfLog.AddRender(Stopwatch.GetElapsedTime(t0).TotalMilliseconds, n);
             return;
         }
-        foreach (var t in PhoneTile.Live) t.UpdateFrame();
+        // màn hình lớn trước (máy đang thao tác), rồi tới các ô. Mỗi nhịp chỉ chép khung trong ~10 ms: nhiều ô cùng có khung
+        // mới (60–100 máy) thì phần còn lại để nhịp sau, bắt đầu từ ô kế tiếp — chuột/phím không phải chờ chép hết mọi ô.
         UpdateViewerFrame();
+        if (focusMode) return; // lưới đang ẩn: không có ô nào cần vẽ
+        var tiles = renderList;
+        tiles.Clear();
+        tiles.AddRange(PhoneTile.Live);
+        int count = tiles.Count;
+        if (count == 0) return;
+        long start = Stopwatch.GetTimestamp();
+        if (renderNext >= count) renderNext = 0;
+        for (int i = 0; i < count; i++)
+        {
+            int idx = (renderNext + i) % count;
+            tiles[idx].UpdateFrame();
+            if ((i & 7) == 7 && Stopwatch.GetElapsedTime(start).TotalMilliseconds > 10) { renderNext = (idx + 1) % count; return; }
+        }
+        renderNext = 0;
     }
+
+    int renderNext;
+    readonly List<PhoneTile> renderList = [];
 
     /// <summary>Ô nằm trong vùng nhìn thấy mới giải mã (100 máy vẫn nhẹ).</summary>
     void UpdateVisibility()

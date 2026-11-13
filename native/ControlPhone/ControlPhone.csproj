@@ -12,7 +12,7 @@
     <SelfContained>false</SelfContained>
     <AssemblyName>ControlPhone</AssemblyName>
     <RootNamespace>ControlPhone</RootNamespace>
-    <Version>2.1.5</Version>
+    <Version>2.2.0</Version>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -26,6 +26,10 @@
   <!-- bàn phím "chỉ nhập từ PC" (build bằng native/keyboard/build.ps1) -->
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)..\keyboard\ControlPhoneKeyboard.apk" Link="ControlPhoneKeyboard.apk" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+  <!-- helper chạy trong recovery (TWRP): hình + chạm khi máy không có Android (build bằng native/recovery/build.ps1) -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\recovery\cprec-arm64;$(MSBuildThisFileDirectory)..\recovery\cprec-arm" Link="recovery\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" Visible="false" />
   </ItemGroup>
   <!-- bản dịch dùng chung với bản web -->
   <ItemGroup>

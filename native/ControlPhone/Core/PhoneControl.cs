@@ -9,6 +9,7 @@ public static class PhoneControl
     {
         foreach (var d in devices)
         {
+            if (d.Recovery is { } rec) { ActRecovery(rec, name); continue; }
             var s = d.ControlSession;
             if (s == null) continue;
             switch (name)
@@ -34,6 +35,21 @@ public static class PhoneControl
                 case "getclip": s.Send(ControlMessages.GetClipboardMsg(0)); break;
                 case "unlock": _ = UnlockAsync(s); break;
             }
+        }
+    }
+
+    /// <summary>Máy đang ở recovery (TWRP): chỉ có phím điều hướng / nguồn / âm lượng và vuốt thanh mở khoá.</summary>
+    static void ActRecovery(Recovery.RecoverySession r, string name)
+    {
+        switch (name)
+        {
+            case "home": r.KeyPress(Recovery.RecoverySession.KeyHome); break;
+            case "back": r.KeyPress(Recovery.RecoverySession.KeyBack); break;
+            case "power": case "wake": case "sleep": r.KeyPress(Recovery.RecoverySession.KeyPower); break;
+            case "volup": r.KeyPress(Recovery.RecoverySession.KeyVolumeUp); break;
+            case "voldown": r.KeyPress(Recovery.RecoverySession.KeyVolumeDown); break;
+            // TWRP tự khoá màn hình sau thời gian chờ: thanh "Swipe to Unlock" nằm sát đáy, vuốt từ trái sang phải
+            case "unlock": _ = r.SwipeAsync(0.10, 0.865, 0.93, 0.865); break;
         }
     }
 

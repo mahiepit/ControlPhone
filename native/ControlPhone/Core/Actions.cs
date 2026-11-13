@@ -84,6 +84,7 @@ public sealed class Actions
         ["stopapp"] = async (d, a, p) => { await AdbClient.ShellAsync(a, $"am force-stop {AdbClient.ShellQuote(S(p, "pkg"))}", 15000); return (true, "đã dừng"); },
         ["clearapp"] = async (d, a, p) => { var o = await AdbClient.ShellAsync(a, $"pm clear {AdbClient.ShellQuote(S(p, "pkg"))} 2>&1", 30000); return (o.Contains("Success"), o.Trim()); },
         ["reboot"] = async (d, a, p) => { await AdbClient.RunAsync([.. AdbClient.Sel(a), "reboot"], 20000); return (true, "đang khởi động lại"); },
+        ["rebootrecovery"] = async (d, a, p) => { await AdbClient.RunAsync([.. AdbClient.Sel(a), "reboot", "recovery"], 20000); return (true, "đang khởi động vào recovery"); },
         ["screenshot"] = async (d, a, p) =>
         {
             var png = await AdbClient.ExecOutAsync(a, "screencap -p", 30000);
@@ -131,6 +132,8 @@ public sealed class Actions
             if (!ok && Regex.IsMatch(msg, "refused|10061")) msg += "\n→ ROM của máy này chặn ADB qua TCP (hay gặp ở Samsung Android 11+). Hãy bật \"Gỡ lỗi không dây\" trong Tuỳ chọn nhà phát triển rồi dùng \"Ghép nối mã\".";
             return (ok, msg);
         },
+        // OTG/LAN: bật adb qua mạng trên máy đang cắm USB (trước khi chuyển box sang OTG), không mở thêm đường WiFi
+        ["lanprep"] = (d, a, p) => manager.PrepareLanAsync(d, a),
         // WiFi → USB: ngắt kết nối WiFi, không tự nối lại nữa. KHÔNG khởi động lại adbd (máy chưa "Luôn cho phép" sẽ hỏi lại).
         ["tousb"] = async (d, a, p) =>
         {

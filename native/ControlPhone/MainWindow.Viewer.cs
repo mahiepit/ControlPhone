@@ -114,6 +114,7 @@ public partial class MainWindow
         manager.AcquireHq(d);
         d.IsActive = true;
         ViewerPane.Visibility = Visibility.Visible;
+        SetFocusMode(Store.Settings.FocusViewer);
         UpdateViewerHead();
         LayoutViewer();
         Dispatcher.BeginInvoke(() => VScreen.Focus(), System.Windows.Threading.DispatcherPriority.Input);
@@ -127,6 +128,29 @@ public partial class MainWindow
         vBmp = null;
         VImg.Source = null;
         ViewerPane.Visibility = Visibility.Collapsed;
+        SetFocusMode(false);
+    }
+
+    bool focusMode;
+    HorizontalAlignment? vBodyAlign;
+
+    /// <summary>
+    /// Phóng to 1 máy = chỉ làm việc với máy đó: ẩn lưới, màn hình lớn chiếm cả khu giữa. Các ô đã ẩn thì không giải mã và
+    /// không vẽ nữa (UpdateVisibility → SetVisible(false)), nên máy tính chỉ còn xử lý hình của đúng 1 máy. Luồng của các máy
+    /// khác vẫn mở: thao tác đồng bộ vẫn tới đủ máy, và đóng màn hình lớn là lưới có hình lại ngay (xin keyframe), không phải
+    /// khởi động lại scrcpy trên từng máy.
+    /// </summary>
+    void SetFocusMode(bool on)
+    {
+        if (single != null || focusMode == on) return;
+        focusMode = on;
+        vBodyAlign ??= VBody.HorizontalAlignment;
+        if (GridArea.Parent is FrameworkElement main) main.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetColumn(ViewerPane, on ? 1 : 2);
+        ViewerPane.BorderThickness = on ? new Thickness(0) : new Thickness(1, 0, 0, 0);
+        VBody.HorizontalAlignment = on ? HorizontalAlignment.Center : vBodyAlign.Value;
+        // sau khi bố cục lại mới biết ô nào còn thấy: ẩn lưới → dừng giải mã ngay; hiện lại → xin keyframe ngay
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, UpdateVisibility);
     }
 
     void StepViewer(int dir)
@@ -153,7 +177,10 @@ public partial class MainWindow
         if (viewerId == null) return;
         double w = vBmp?.PixelWidth ?? 9, h = vBmp?.PixelHeight ?? 18.5;
         double availH = ActualHeight - 48 - 46 - 44 - 60;
-        double maxW = single != null ? Math.Max(240, ActualWidth - 160) : Math.Max(240, ActualWidth * 0.5); // 1 máy: màn hình lớn chiếm cả cửa sổ
+        // 1 máy / đang ẩn lưới: màn hình lớn chiếm cả khu giữa; còn lưới bên cạnh: tối đa nửa cửa sổ
+        double maxW = single != null ? Math.Max(240, ActualWidth - 160)
+            : focusMode ? Math.Max(240, ActualWidth - (Sidebar.IsVisible ? Sidebar.ActualWidth : 0) - 160)
+            : Math.Max(240, ActualWidth * 0.5);
         double H = Math.Max(200, availH), W = H * w / h;
         if (W > maxW) { W = maxW; H = W * h / w; }
         VScreen.Width = Math.Round(W);

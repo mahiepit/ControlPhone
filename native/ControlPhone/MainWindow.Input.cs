@@ -202,6 +202,7 @@ public partial class MainWindow
     {
         foreach (var d in t.Targets)
         {
+            if (d.Recovery is { } rec) { rec.Touch(action, p.X, p.Y); continue; } // máy ở recovery (TWRP): chạm 1 ngón qua helper
             var s = d.ControlSession;
             if (s == null) continue;
             if (t.Pinch)

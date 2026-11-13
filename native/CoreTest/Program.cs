@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows.Threading;
 using ControlPhone.Adb;
 using ControlPhone.Core;
@@ -27,6 +27,36 @@ T Ui<T>(Func<T> f) => ui!.Invoke(f);
 void UiDo(Action a) => ui!.Invoke(a);
 
 // an toàn dữ liệu: config.json hỏng KHÔNG được bị ghi đè (dotnet run -c Release -- store) — chạy trên bản sao trong thư mục tạm
+// logic OTG/LAN + recovery, KHÔNG kết nối điện thoại nào: dotnet run -c Release -- lanunit
+if (args.Contains("lanunit"))
+{
+    Check(DeviceManager.ParsePorts("5555, 15555;5555 abc 70000").SequenceEqual([5555, 15555]) && DeviceManager.ParsePorts("").SequenceEqual([5555]),
+        "Đọc danh sách cổng (bỏ trùng / sai, rỗng → 5555)");
+    var lanPick = DeviceManager.PickLanTargets([("192.168.1.9", 15555), ("192.168.1.9", 5555), ("192.168.1.7", 15555)], [5555, 15555]);
+    Check(lanPick.Count == 2 && lanPick.Contains("192.168.1.9:5555") && lanPick.Contains("192.168.1.7:15555"), "Máy mở nhiều cổng: chỉ nối 1 cổng, theo thứ tự ưu tiên", string.Join(" ", lanPick));
+    // định danh qua mạng: có serial USB thật → cùng mục với lúc cắm USB (kể cả ROM nhân bản ro.serialno)
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    var mgrU = Ui(() => new DeviceManager(ui!));
+    var resolveM = typeof(DeviceManager).GetMethod("ResolveId", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+    string Res(string sn, string aid, string type, string addr, string usb) => Ui(() => (string)resolveM.Invoke(mgrU, [sn, aid, type, addr, usb])!);
+    var usbId = Res("841ca9e245d05a47", "aaaaaaaaaaaaaaaa", "usb", "ce07TESTSERIAL01", "");
+    int n1 = Ui(() => Store.Meta(usbId).Num);
+    var lanSame = Res("841ca9e245d05a47", "bbbbbbbbbbbbbbbb", "wifi", "192.168.1.200:5555", "ce07TESTSERIAL01");
+    var lanOther = Res("841ca9e245d05a47", "cccccccccccccccc", "wifi", "192.168.1.201:5555", "ce07TESTSERIAL02");
+    var lanNoRoot = Res("841ca9e245d05a47", "dddddddddddddddd", "wifi", "192.168.1.202:5555", "");
+    Check(usbId == "ce07TESTSERIAL01" && lanSame == usbId && Ui(() => Store.Meta(lanSame).Num) == n1, "Qua mạng, đọc được serial USB → đúng ô đã có khi cắm USB", $"{lanSame} #{n1}");
+    Check(lanOther == "ce07TESTSERIAL02" && lanOther != usbId, "2 máy ROM nhân bản (cùng ro.serialno) qua mạng → 2 ô khác nhau", lanOther);
+    Check(lanNoRoot.StartsWith("wifi:"), "Không đọc được serial USB (không root) → cách nhận cũ", lanNoRoot);
+    // giải nén khung hình của helper recovery
+    var decM = typeof(ControlPhone.Recovery.RecoverySession).GetMethod("Decode", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+    byte[] rleT = [3, 10, 20, 30, 1, 1, 2, 3], pxT = new byte[16], badT = new byte[12];
+    bool decOk1 = (bool)decM.Invoke(null, [rleT, 8, pxT])!, decOk2 = (bool)decM.Invoke(null, [rleT, 8, badT])!;
+    Check(decOk1 && pxT.SequenceEqual(new byte[] { 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 1, 2, 3, 255 }) && !decOk2, "Khung hình recovery: giải nén RLE đúng, dữ liệu lệch kích thước bị từ chối");
+    Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "recovery", "cprec-arm64")) && File.Exists(Path.Combine(AppContext.BaseDirectory, "recovery", "cprec-arm")), "Helper recovery được đóng gói kèm app");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 if (args.Contains("store"))
 {
     var cfg = Path.Combine(dataCopy, "config.json");
@@ -163,6 +193,83 @@ if (args.Contains("otheradb"))
     var others = await AdbClient.FindOtherServersAsync();
     foreach (var o in others) Console.WriteLine($"cổng {o.Port} · PID {o.Pid} · mở {o.Started:HH:mm:ss} · {o.Serials.Count} máy: {string.Join(", ", o.Serials.Take(5))}…");
     Check(true, "Dò adb server khác", $"{others.Count} server, {others.Sum(o => o.Serials.Count)} máy bị giữ");
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
+// máy ở recovery (TWRP): dotnet run -c Release -- recovery <serial>
+// KHỞI ĐỘNG máy vào recovery, kiểm tra cùng ô + có hình + chạm ăn, rồi khởi động lại về Android (máy gián đoạn ~2 phút).
+if (args.Contains("recovery"))
+{
+    var serial = args.SkipWhile(a => a != "recovery").Skip(1).First();
+    var shots = Path.Combine(Path.GetTempPath(), "cp-coretest");
+    Directory.CreateDirectory(shots);
+    void SavePng(ControlPhone.Video.FrameBuffer? fb, string name)
+    {
+        if (fb == null) return;
+        fb.MarkDirty();
+        fb.TryTake((px, w, h) =>
+        {
+            var bs = System.Windows.Media.Imaging.BitmapSource.Create(w, h, 96, 96, System.Windows.Media.PixelFormats.Bgr32, null, px, w * 4);
+            var enc = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            enc.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bs));
+            using var f = File.Create(Path.Combine(shots, name));
+            enc.Save(f);
+        });
+    }
+    async Task<bool> WaitFor(Func<bool> cond, int seconds)
+    {
+        var w = System.Diagnostics.Stopwatch.StartNew();
+        while (w.Elapsed.TotalSeconds < seconds) { if (Ui(cond)) return true; await Task.Delay(500); }
+        return Ui(cond);
+    }
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    DeviceManager.SingleAddr = serial; // chỉ máy này: không mở phiên nào trên các máy khác
+    var mgrR = Ui(() => new DeviceManager(ui!));
+    UiDo(() => mgrR.Start());
+    PhoneDevice? dev = null;
+    await WaitFor(() => (dev = mgrR.Get(serial)) is { IsOnline: true }, 60);
+    Check(dev is { IsOnline: true, InRecovery: false }, "Android: máy online bình thường", dev == null ? "(không thấy máy)" : Ui(() => $"#{dev!.Num} {dev.Model} · {dev.Status}"));
+    if (dev == null) { Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi"); return 1; }
+    int num = Ui(() => dev.Num);
+    var swR = System.Diagnostics.Stopwatch.StartNew();
+    await AdbClient.RunAsync(["-s", serial, "reboot", "recovery"], 20000);
+    bool inRec = await WaitFor(() => dev.InRecovery && dev.IsOnline && dev.Recovery!.Frames > 0, 150);
+    Check(inRec, "Vào recovery: có hình trên ô", Ui(() => $"{dev.Model} · màn hình {dev.VideoW}×{dev.VideoH} · sau {swR.Elapsed.TotalSeconds:0} giây"));
+    Check(Ui(() => mgrR.Get(serial) == dev && dev.Num == num && mgrR.Devices.Count(x => !x.Pending) == 1), "Vẫn là cùng một ô, cùng số thứ tự", Ui(() => $"#{dev.Num} · {mgrR.Devices.Count} ô"));
+    try
+    {
+        if (inRec)
+        {
+            SavePng(Ui(() => dev.Frames), "recovery-1.png");
+            // board không màn hình: chờ cảm ứng ảo + TWRP nạp lại thiết bị nhập
+            await WaitFor(() => dev.Recovery?.TouchMode != 0, 8);
+            await Task.Delay(2500);
+            var rec = Ui(() => dev.Recovery)!;
+            Check(rec.TouchMode != 0, "Có đường bơm chạm", rec.TouchMode == 1 ? "cảm ứng thật của máy" : rec.TouchMode == 2 ? "cảm ứng ảo (uinput) — máy không có màn hình" : "không có");
+            long f0 = rec.Frames;
+            // trang đầu của TWRP khi chưa cho phép sửa /system: nút "Keep Read Only" (không đổi gì trên máy)
+            rec.Touch(ControlPhone.Scrcpy.ControlMessages.ActionDown, 0.26, 0.77);
+            await Task.Delay(100);
+            rec.Touch(ControlPhone.Scrcpy.ControlMessages.ActionUp, 0.26, 0.77);
+            await Task.Delay(2500);
+            SavePng(Ui(() => dev.Frames), "recovery-2.png");
+            Check(rec.Frames > f0, "Chạm ăn: màn hình TWRP đổi sau khi bấm", $"{rec.Frames - f0} khung mới · ảnh: {shots}\\recovery-1.png, recovery-2.png");
+            // màn hình lớn dùng bộ đệm riêng của cùng nguồn
+            UiDo(() => mgrR.AcquireHq(dev));
+            bool hqOk = false; Ui(() => dev.HqFrames)?.MarkDirty(); Ui(() => dev.HqFrames)?.TryTake((_, w, h) => hqOk = w > 0 && h > 0);
+            Check(hqOk && Ui(() => dev.Hq == null && dev.Thumb == null), "Màn hình lớn có hình, không mở phiên scrcpy nào trên máy ở recovery");
+            UiDo(() => mgrR.ReleaseHq(dev));
+        }
+    }
+    finally
+    {
+        swR.Restart();
+        await AdbClient.RunAsync(["-s", serial, "reboot"], 20000);
+        bool back = await WaitFor(() => !dev.InRecovery && dev.IsOnline, 180);
+        Check(back && Ui(() => dev.Num == num), "Khởi động lại: máy về Android, vẫn cùng ô", Ui(() => $"{dev.Model} · {dev.Status} · sau {swR.Elapsed.TotalSeconds:0} giây"));
+        UiDo(() => mgrR.Dispose());
+    }
     Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
     return 0;
 }

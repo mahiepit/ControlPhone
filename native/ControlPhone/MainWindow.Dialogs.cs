@@ -451,6 +451,10 @@ public partial class MainWindow
         var autoWifi = d.AddCheck("Tự kết nối lại các máy WiFi đã từng kết nối", s.AutoReconnectWifi);
         var stopAdb = d.AddCheck("Tắt ADB khi thoát ControlPhone (mặc định tắt: adb vẫn chạy cho các chương trình khác đang dùng điện thoại)", s.KillAdbOnExit);
         var autoKey = d.AddCheck("ROOT: tự cấy khoá uỷ quyền khi máy kết nối (khỏi hỏi \"Cho phép gỡ lỗi USB\")", s.AutoPersistKey);
+        var focus = d.AddCheck("Khi phóng to 1 máy: ẩn các máy khác và ngừng giải mã / vẽ hình của chúng (vẫn điều khiển đồng bộ)", s.FocusViewer);
+        var lanAuto = d.AddCheck("Chế độ OTG/LAN: tự tìm và kết nối điện thoại trong mạng LAN (box chuyển máy sang cổng mạng, không còn cáp USB tới máy tính); máy root cắm USB lần đầu được tự bật ADB qua mạng", s.LanAuto);
+        var lanPorts = new TextBox { Text = s.LanPorts };
+        d.Body.Children.Add(d.Field("OTG/LAN: cổng ADB qua mạng cần tìm (vd. 5555, hoặc 5555,15555)", lanPorts));
         d.AddNote(string.Join("\n", new[]
         {
             "Thay đổi chất lượng lưới sẽ kết nối lại luồng của tất cả máy.",
@@ -479,6 +483,8 @@ public partial class MainWindow
             s.ScreenOffOnConnect = screenOff.IsChecked == true; s.PowerOnConnect = powerOn.IsChecked == true;
             s.AutoReconnectWifi = autoWifi.IsChecked == true; s.KillAdbOnExit = stopAdb.IsChecked == true; s.AutoPersistKey = autoKey.IsChecked == true;
             s.SoftwareEncoder = swEnc.IsChecked == true;
+            s.FocusViewer = focus.IsChecked == true;
+            s.LanAuto = lanAuto.IsChecked == true; s.LanPorts = string.Join(",", DeviceManager.ParsePorts(lanPorts.Text));
             Store.Save();
             manager.ResetStartLimiter();
             if (before != (s.ThumbMaxSize, s.ThumbBitRate, s.ThumbFps, s.PowerOnConnect, s.ScreenOffOnConnect, s.SoftwareEncoder)) manager.RestartAll();

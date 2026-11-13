@@ -54,7 +54,8 @@ public sealed class DeviceManager : IDisposable
             await AdbClient.TrackDevicesAsync(list => ui.BeginInvoke(() => OnTrack(list)), e => ui.BeginInvoke(() => Log?.Invoke("adb: " + e, true)), cts.Token);
         });
         infoTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { RefreshAllInfo(); HealUnauthorized(); }, ui);
-        wifiTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => _ = AutoReconnectWifiAsync(), ui);
+        wifiTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { _ = AutoReconnectWifiAsync(); _ = LanDiscoverAsync(); }, ui);
+        if (Store.Settings.LanAuto) _ = Task.Delay(4000).ContinueWith(_ => ui.BeginInvoke(() => _ = LanDiscoverAsync()), TaskScheduler.Default);
         infoTimer.Start(); wifiTimer.Start();
     }
 
@@ -77,6 +78,7 @@ public sealed class DeviceManager : IDisposable
         using var _op = StallWatch.Op("adb: danh sách máy thay đổi");
         if (stopping) return;
         if (SingleAddr != null) list = list.Where(x => IsSingleTarget(x.Addr)).ToList();
+        if (AddrFilter is { } only) list = list.Where(x => only(x.Addr)).ToList();
         // kết nối xwdb tạm thời của bước tự cấp quyền: không nhận thành máy/đường kết nối
         if (!healing.IsEmpty) list = list.Where(x => !healing.ContainsKey(x.Addr)).ToList();
         lastTrack = list;
@@ -89,6 +91,9 @@ public sealed class DeviceManager : IDisposable
             ScrcpySession.ForgetPushed(addr);
             if (byId.TryGetValue(id, out var d)) Detach(d, addr);
         }
+        // máy đã rời recovery (khởi động lại vào Android / rút cáp)
+        foreach (var addr in recoveryAddrs.Keys.ToList())
+            if (seen.GetValueOrDefault(addr) != "recovery") DetachRecovery(addr);
         // ô thông báo (pending) không còn đúng trạng thái
         foreach (var d in byId.Values.Where(x => x.Pending).ToList())
         {
@@ -102,6 +107,7 @@ public sealed class DeviceManager : IDisposable
             {
                 if (!serialToId.ContainsKey(x.Addr) && !probing.Contains(x.Addr)) _ = ProbeAsync(x.Addr);
             }
+            else if (x.State == "recovery") AttachRecovery(x.Addr); // TWRP...: hiện màn hình recovery + điều khiển
             else
             {
                 var pid = "pending:" + x.Addr;
@@ -119,6 +125,217 @@ public sealed class DeviceManager : IDisposable
         }
         foreach (var k in serialStates.Keys.ToList()) if (!seen.ContainsKey(k)) serialStates.Remove(k);
         foreach (var (k, v) in seen) serialStates[k] = v;
+    }
+
+    // ---------- OTG / LAN ----------
+    /// <summary>Chỉ dùng khi kiểm thử: giới hạn các địa chỉ adb được nhận / được tự kết nối.</summary>
+    public static Func<string, bool>? AddrFilter;
+
+    public static int[] ParsePorts(string s)
+    {
+        var ports = s.Split([',', ' ', ';'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => int.TryParse(p, out var v) && v is > 0 and < 65536 ? v : 0).Where(v => v != 0).Distinct().ToArray();
+        return ports.Length > 0 ? ports : [5555];
+    }
+
+    /// <summary>1 máy mở nhiều cổng (vd. 5555 và 15555): chỉ nối cổng đứng trước trong danh sách cài đặt.</summary>
+    public static List<string> PickLanTargets(IEnumerable<(string Ip, int Port)> open, int[] ports) =>
+        open.GroupBy(o => o.Ip).Select(g => g.OrderBy(o => Array.IndexOf(ports, o.Port)).First()).Select(o => $"{o.Ip}:{o.Port}").ToList();
+
+    /// <summary>Các (IP, cổng) trong mạng LAN của PC đang mở một trong các cổng, trừ IP cần bỏ qua.</summary>
+    static async Task<List<(string Ip, int Port)>> ScanLanAsync(int[] ports, HashSet<string> skipIps)
+    {
+        var hosts = Actions.LocalSubnets().Select(s => s.Subnet).Distinct().SelectMany(sn => Enumerable.Range(1, 254).Select(i => $"{sn}.{i}")).Where(h => !skipIps.Contains(h)).ToList();
+        var open = new System.Collections.Concurrent.ConcurrentBag<(string, int)>();
+        using var lim = new SemaphoreSlim(128);
+        await Task.WhenAll(hosts.SelectMany(h => ports.Select(port => (h, port))).Select(async x =>
+        {
+            await lim.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                using var c = new System.Net.Sockets.TcpClient();
+                using var t = new CancellationTokenSource(500);
+                await c.ConnectAsync(x.h, x.port, t.Token).ConfigureAwait(false);
+                open.Add((x.h, x.port));
+            }
+            catch { }
+            finally { lim.Release(); }
+        })).ConfigureAwait(false);
+        return [.. open];
+    }
+
+    bool lanBusy;
+
+    /// <summary>
+    /// Chế độ OTG/LAN: box chuyển điện thoại sang cổng mạng dây (OTG) thì không còn USB tới PC — máy chỉ còn adb qua mạng.
+    /// Quét mạng LAN của PC (20 giây/lần) tìm máy đang mở cổng adb và tự kết nối: cắm máy vào box là máy tự hiện, không phải
+    /// nhập IP hay bấm quét. Bỏ qua IP của máy đang có đường USB (1 máy không cần 2 đường, và chương trình khác dùng chung adb
+    /// server sẽ thấy mỗi máy 2 lần). Máy được nhận đúng ô cũ nhờ serial USB thật (xem ResolveId).
+    /// </summary>
+    async Task LanDiscoverAsync()
+    {
+        if (!Store.Settings.LanAuto || stopping || SingleAddr != null || lanBusy) return;
+        lanBusy = true;
+        try
+        {
+            var ports = ParsePorts(Store.Settings.LanPorts);
+            var skip = byId.Values.Where(d => d.HasUsb && d.Ip != "").Select(d => d.Ip).ToHashSet();
+            foreach (var a in serialStates.Keys.Where(AdbClient.IsWifiSerial)) skip.Add(a.Split(':')[0]); // IP đã có kết nối
+            var open = await ScanLanAsync(ports, skip);
+            long now = Environment.TickCount64;
+            var targets = PickLanTargets(open, ports).Where(a => (AddrFilter?.Invoke(a) ?? true) && !healing.ContainsKey(a)
+                && !(wifiBackoff.TryGetValue(a, out var b) && now < b.NextAt)).ToList();
+            using var lim = new SemaphoreSlim(8);
+            await Task.WhenAll(targets.Select(async t =>
+            {
+                await lim.WaitAsync();
+                try
+                {
+                    var r = await AdbClient.RunAsync(["connect", t], 8000);
+                    bool ok = r.Out.Contains("connected to", StringComparison.OrdinalIgnoreCase) && !r.Out.Contains("unable", StringComparison.OrdinalIgnoreCase);
+                    await ui.InvokeAsync(() =>
+                    {
+                        if (ok) { wifiBackoff.Remove(t); return; }
+                        int fails = wifiBackoff.TryGetValue(t, out var old) ? old.Fails + 1 : 1;
+                        wifiBackoff[t] = (fails, Environment.TickCount64 + Math.Min(20_000L << Math.Min(fails, 5), 600_000));
+                    });
+                }
+                finally { lim.Release(); }
+            }));
+        }
+        catch { /* chỉ là tìm thêm máy */ }
+        finally { lanBusy = false; }
+    }
+
+    /// <summary>
+    /// Bật adb qua mạng trên máy đang cắm USB, để khi box chuyển sang OTG (cổng mạng dây, không còn USB tới PC) vẫn điều
+    /// khiển được. Máy root: cấy khoá PC trước (khỏi bị hỏi uỷ quyền qua mạng) rồi đặt cổng cố định — giữ cả sau khi khởi động
+    /// lại; adbd khởi động lại 1 lần (USB rớt ~2 giây). Máy không root: adb tcpip, mất khi máy khởi động lại.
+    /// </summary>
+    public async Task<(bool Ok, string Msg)> PrepareLanAsync(PhoneDevice d, string addr)
+    {
+        int port = ParsePorts(Store.Settings.LanPorts)[0];
+        if (AdbClient.IsWifiSerial(addr)) return (true, "Máy đang kết nối qua mạng sẵn rồi");
+        string st;
+        try { st = await AdbClient.ShellAsync(addr, "echo \"P=$(getprop service.adb.tcp.port)/$(getprop persist.adb.tcp.port)\"; ip -o -f inet addr show scope global 2>/dev/null | awk '{print \"IF=\" $2 \" \" $4}'", 10000); }
+        catch (Exception e) { return (false, e.Message); }
+        // IP để nhớ: ưu tiên cổng mạng dây (eth), rồi tới WiFi
+        var ip = Regex.Matches(st, @"IF=(\S+) (\d+\.\d+\.\d+\.\d+)").Select(m => (If: m.Groups[1].Value, Ip: m.Groups[2].Value))
+            .OrderBy(x => x.If.StartsWith("eth") ? 0 : x.If.StartsWith("wlan") ? 1 : 2).Select(x => x.Ip).FirstOrDefault() ?? "";
+        var cur = Regex.Match(st, @"P=(\d*)/(\d*)");
+        bool listening = cur.Groups[1].Value == port.ToString(), persistent = cur.Groups[2].Value == port.ToString();
+        if (d.Root)
+        {
+            var k = await AdbClient.PersistAdbKeyAsync(addr);
+            if (!k.Ok) return (false, "Chưa bật (tránh bị hỏi uỷ quyền qua mạng): " + k.Msg);
+            if (!listening || !persistent)
+            {
+                // đánh dấu trước: adbd khởi động lại làm USB rớt ~2 giây rồi máy được nhận lại → không làm lại lần nữa
+                await ui.InvokeAsync(() => { Store.Meta(d.Id).LanReady = true; Store.Save(); });
+                string o;
+                try { o = await AdbClient.ShellAsync(addr, $"su -c 'setprop persist.adb.tcp.port {port}; setprop service.adb.tcp.port {port}; echo SET; setprop ctl.restart adbd' 2>&1", 20000); }
+                catch (Exception e) { o = "SET " + e.Message; } // adbd khởi động lại cắt kết nối giữa chừng
+                if (!o.Contains("SET")) return (false, o.Trim());
+            }
+        }
+        else if (!listening)
+        {
+            var r = await AdbClient.RunAsync([.. AdbClient.Sel(addr), "tcpip", port.ToString()], 15000);
+            if (r.Code != 0) return (false, r.Out);
+        }
+        await ui.InvokeAsync(() =>
+        {
+            var m = Store.Meta(d.Id);
+            m.LanReady = true;
+            // nhớ địa chỉ: khi máy mất USB (box sang OTG) sẽ được nối lại ngay qua địa chỉ này, không chờ quét
+            if (ip != "") { m.Wifi = $"{ip}:{port}"; if (!Store.State.WifiHistory.Contains(m.Wifi)) Store.State.WifiHistory.Add(m.Wifi); }
+            Store.Save();
+        });
+        return (true, (ip != "" ? I18n.T("Đã bật ADB qua mạng: {0}:{1}", ip, port) : I18n.T("Đã bật ADB qua mạng (cổng {0}) — máy chưa có IP", port))
+            + " · " + I18n.T(d.Root ? "giữ sau khi khởi động lại" : "mất khi máy khởi động lại"));
+    }
+
+    // ---------- recovery (TWRP...) ----------
+    readonly Dictionary<string, string> recoveryAddrs = []; // addr → id của máy
+
+    bool IsRecovery(PhoneDevice d) => d.ActiveAddr != null && recoveryAddrs.ContainsKey(d.ActiveAddr);
+
+    /// <summary>
+    /// adb báo máy ở trạng thái "recovery": vẫn là CHÍNH máy đó (cùng serial USB → cùng ô, cùng số thứ tự), nhưng không có
+    /// Android nên không mở phiên scrcpy — hình và điều khiển đi qua <see cref="Recovery.RecoverySession"/>.
+    /// </summary>
+    void AttachRecovery(string addr)
+    {
+        if (recoveryAddrs.ContainsKey(addr)) return;
+        bool wifi = AdbClient.IsWifiSerial(addr);
+        var id = wifi ? Store.State.Devices.FirstOrDefault(kv => kv.Value.Wifi == addr).Key ?? "wifi:" + addr : AdbClient.SplitAddr(addr).Serial;
+        if (byId.TryGetValue("pending:" + addr, out var pend)) Remove(pend);
+        if (!byId.TryGetValue(id, out var d)) { d = new PhoneDevice(id); Add(d); }
+        StopSessions(d);
+        recoveryAddrs[addr] = id;
+        d.Transports[addr] = wifi ? "wifi" : "usb";
+        d.ActiveAddr = addr;
+        StartRecovery(d, addr);
+    }
+
+    void StartRecovery(PhoneDevice d, string addr)
+    {
+        var r = new Recovery.RecoverySession(addr);
+        d.Recovery = r;
+        d.Status = "connecting"; d.Error = ""; d.HasFrame = false;
+        Changed(d);
+        r.InfoChanged += () => ui.BeginInvoke(() => { if (d.Recovery == r) { d.VideoW = r.ScreenW; d.VideoH = r.ScreenH; Changed(d); } });
+        r.Ended += reason => ui.BeginInvoke(() => OnRecoveryEnded(d, r, reason));
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await r.StartAsync(cts.Token);
+                await ui.InvokeAsync(() =>
+                {
+                    if (d.Recovery != r) return;
+                    d.Status = "online"; d.Error = "";
+                    d.Model = r.Device != "" ? $"{r.Name} · {r.Device}" : r.Name;
+                    d.Android = ""; d.Battery = null;
+                    Changed(d);
+                });
+            }
+            catch (Exception e)
+            {
+                await ui.InvokeAsync(() => { if (d.Recovery == r) d.Error = e.Message; });
+                r.Dispose();
+            }
+        });
+    }
+
+    void OnRecoveryEnded(PhoneDevice d, Recovery.RecoverySession r, string reason)
+    {
+        if (d.Recovery != r) return;
+        d.Recovery = null;
+        var addr = r.Addr;
+        if (stopping || !recoveryAddrs.ContainsKey(addr)) return;
+        // helper bị đóng nhưng máy vẫn ở recovery: báo trên ô rồi thử lại
+        d.Status = "connecting";
+        if (d.Error == "") d.Error = reason;
+        d.HasFrame = false;
+        Changed(d);
+        _ = Task.Delay(4000).ContinueWith(_ => ui.BeginInvoke(() =>
+        {
+            if (!stopping && d.Recovery == null && recoveryAddrs.ContainsKey(addr) && d.ActiveAddr == addr) StartRecovery(d, addr);
+        }), TaskScheduler.Default);
+    }
+
+    void DetachRecovery(string addr)
+    {
+        if (!recoveryAddrs.Remove(addr, out var id) || !byId.TryGetValue(id, out var d)) return;
+        var r = d.Recovery;
+        d.Recovery = null;
+        r?.Dispose();
+        d.Transports.Remove(addr);
+        if (d.ActiveAddr == addr) d.ActiveAddr = null;
+        d.HasFrame = false;
+        ChooseTransport(d);
+        Changed(d);
     }
 
     // ---------- tự cấp lại quyền ADB qua xwdb ----------
@@ -226,26 +443,7 @@ public sealed class DeviceManager : IDisposable
     }
 
     /// <summary>Các IP trong mạng LAN (các card mạng của PC) đang mở cổng 15555 của xwdb, trừ IP đã biết.</summary>
-    static async Task<List<string>> OpenXwdbHostsAsync(HashSet<string> skip)
-    {
-        var hosts = Actions.LocalSubnets().Select(s => s.Subnet).Distinct().SelectMany(sn => Enumerable.Range(1, 254).Select(i => $"{sn}.{i}")).Where(h => !skip.Contains(h)).ToList();
-        var open = new System.Collections.Concurrent.ConcurrentBag<string>();
-        using var lim = new SemaphoreSlim(128);
-        await Task.WhenAll(hosts.Select(async h =>
-        {
-            await lim.WaitAsync();
-            try
-            {
-                using var c = new System.Net.Sockets.TcpClient();
-                using var t = new CancellationTokenSource(500);
-                await c.ConnectAsync(h, 15555, t.Token);
-                open.Add(h);
-            }
-            catch { }
-            finally { lim.Release(); }
-        }));
-        return open.ToList();
-    }
+    static async Task<List<string>> OpenXwdbHostsAsync(HashSet<string> skip) => (await ScanLanAsync([15555], skip)).Select(o => o.Ip).ToList();
 
     /// <summary>Cấy lại khoá qua xwdb, ngắt xwdb, kết nối lại USB, đóng hộp thoại "Cho phép gỡ lỗi USB" còn treo. "" = thành công.</summary>
     public static async Task<string> HealViaXwdbAsync(string usbAddr, string xw, string? expectAid)
@@ -311,6 +509,9 @@ public sealed class DeviceManager : IDisposable
                 booting = text.Contains("BOOT=") && !text.Contains("BOOT=1");
                 // Android ID đọc riêng: nếu chậm/lỗi vẫn nhận máy bình thường
                 if (!booting) try { text += await AdbClient.ShellAsync(addr, "echo \"AID=$(settings get secure android_id 2>/dev/null)\"", 15000, cts.Token); } catch { }
+                // kết nối qua mạng (WiFi / OTG-LAN): đọc serial USB thật của máy (cần root) để nhận đúng ô máy đã có khi cắm USB
+                if (!booting && AdbClient.IsWifiSerial(addr))
+                    try { text += await AdbClient.ShellAsync(addr, "echo \"USBSN=$(su -c 'cat /config/usb_gadget/*/strings/0x409/serialnumber /sys/class/android_usb/android0/iSerial' 2>/dev/null | head -n1)\"", 10000, cts.Token); } catch { }
             }
             finally { probeLimiter.Release(); }
             if (serialStates.GetValueOrDefault(addr) != "device") return;
@@ -321,7 +522,7 @@ public sealed class DeviceManager : IDisposable
             var aidM = Regex.Match(text, @"AID=([0-9a-f]{6,})", RegexOptions.IgnoreCase);
             var androidId = aidM.Success ? aidM.Groups[1].Value.ToLowerInvariant() : "";
             var type = AdbClient.IsWifiSerial(addr) ? "wifi" : "usb";
-            var hwId = ResolveId(lines.ElementAtOrDefault(0) ?? "", androidId, type, addr);
+            var hwId = ResolveId(lines.ElementAtOrDefault(0) ?? "", androidId, type, addr, Regex.Match(text, @"USBSN=([0-9A-Za-z]{6,})").Groups[1].Value);
             if (byId.TryGetValue("pending:" + addr, out var pend)) Remove(pend);
             if (!byId.TryGetValue(hwId, out var d)) { d = new PhoneDevice(hwId); Add(d); }
             d.Model = lines.ElementAtOrDefault(1) ?? ""; d.Manufacturer = lines.ElementAtOrDefault(2) ?? "";
@@ -333,6 +534,8 @@ public sealed class DeviceManager : IDisposable
             var meta = Store.Meta(hwId);
             if (androidId != "" && meta.AndroidId != androidId) { meta.AndroidId = androidId; Store.Save(); }
             if (type == "wifi") RememberWifi(hwId, addr);
+            // chế độ OTG/LAN: máy root cắm USB lần đầu → tự bật adb qua mạng (1 lần/máy); chuyển box sang OTG là máy tự hiện lại
+            if (Store.Settings.LanAuto && type == "usb" && d.Root && !meta.LanReady) _ = Task.Run(() => PrepareLanAsync(d, addr));
             // máy root: kiểm tra khoá uỷ quyền của PC mỗi lần nhận máy (1 lần/máy/lần chạy) và cấy lại nếu mất → không bao giờ
             // hỏi lại, kể cả box không màn hình. Android 11+ còn tự thu hồi khoá không dùng sau 7 ngày (đã gặp: 18 máy Note 8
             // LOS 18.1 cùng hỏi "Cho phép gỡ lỗi USB") → tắt thời hạn đó (adb_allowed_connection_time = 0: không bao giờ hết hạn).
@@ -442,7 +645,7 @@ public sealed class DeviceManager : IDisposable
     /// bản cho nhiều máy CÙNG ro.serialno, còn Android ID đổi sau mỗi lần cài ROM → máy bị coi là máy khác, mất số thứ tự.
     /// Máy qua WiFi (serial là ip:port) được gắn vào máy USB đã biết nhờ địa chỉ WiFi đã nhớ hoặc ro.serialno + Android ID.
     /// </summary>
-    string ResolveId(string serialno, string aid, string type, string addr)
+    string ResolveId(string serialno, string aid, string type, string addr, string usbSn = "")
     {
         serialno = serialno.Trim();
         if (serialno == "unknown") serialno = "";
@@ -458,6 +661,9 @@ public sealed class DeviceManager : IDisposable
             if (serialno != "" && m.SerialNo != serialno) { m.SerialNo = serialno; Store.Save(); }
             return id;
         }
+        // đọc được serial USB thật (máy root): cùng định danh như khi cắm USB → cùng ô, cùng số thứ tự. Đúng cả với máy chưa
+        // từng cắm USB vào PC này và ROM nhân bản ro.serialno / Android ID (box OTG-LAN: máy chỉ còn đường mạng).
+        if (usbSn != "") return all.Keys.FirstOrDefault(k => k.StartsWith(usbSn + "#", StringComparison.Ordinal)) ?? usbSn;
         // WiFi: địa chỉ đã nhớ của đúng máy này (Android ID khớp) → máy đó
         foreach (var (k, m) in all)
             if (m.Wifi == addr && (aid == "" || string.IsNullOrEmpty(m.AndroidId) || m.AndroidId == aid)) return k;
@@ -586,7 +792,7 @@ public sealed class DeviceManager : IDisposable
     void EnsureThumb(PhoneDevice d)
     {
         using var _op = StallWatch.Op("mở luồng lưới");
-        if (stopping || d.Thumb != null || d.ActiveAddr == null || d.Pending) return;
+        if (stopping || d.Thumb != null || d.ActiveAddr == null || d.Pending || IsRecovery(d)) return;
         d.RestartCts?.Cancel();
         var sess = new ScrcpySession(d.ActiveAddr, ThumbOptions(d));
         d.Thumb = sess;
@@ -698,7 +904,7 @@ public sealed class DeviceManager : IDisposable
             return;
         }
         d.BoostOffCts?.Cancel();
-        if (d.Boost != null || stopping || d.Pending || d.ActiveAddr == null || !d.IsOnline || !ThumbWantsVideo(d)) return;
+        if (d.Boost != null || stopping || d.Pending || d.ActiveAddr == null || !d.IsOnline || !ThumbWantsVideo(d) || IsRecovery(d)) return;
         if (Store.Settings.ThumbFps >= 20) return; // lưới đã mượt sẵn
         foreach (var o in byId.Values.Where(x => x.Boost != null).OrderBy(x => x.BoostSince).Skip(MaxBoosts - 1).ToList()) ClearBoost(o);
         var s = Store.Settings;
@@ -773,7 +979,7 @@ public sealed class DeviceManager : IDisposable
 
     void EnsureHq(PhoneDevice d)
     {
-        if (stopping || d.Hq != null || d.ActiveAddr == null || d.Pending) return;
+        if (stopping || d.Hq != null || d.ActiveAddr == null || d.Pending || IsRecovery(d)) return;
         var sess = new ScrcpySession(d.ActiveAddr, HqOptions(d));
         d.Hq = sess;
         if (d.HqDecoder == null)
@@ -812,7 +1018,7 @@ public sealed class DeviceManager : IDisposable
     /// <summary>Chạy lại riêng luồng lưới nếu chế độ hình (có/không) không còn đúng.</summary>
     void SyncThumbMode(PhoneDevice d)
     {
-        if (d.Pending || d.ActiveAddr == null) return;
+        if (d.Pending || d.ActiveAddr == null || IsRecovery(d)) return;
         if (!ThumbWantsVideo(d)) ClearBoost(d);
         var t = d.Thumb;
         if (t != null && t.Options.Video == ThumbWantsVideo(d)) return;
@@ -846,6 +1052,14 @@ public sealed class DeviceManager : IDisposable
 
     public void RestartSessions(PhoneDevice d)
     {
+        if (IsRecovery(d))
+        {
+            var r = d.Recovery;
+            d.Recovery = null;
+            r?.Dispose();
+            StartRecovery(d, d.ActiveAddr!);
+            return;
+        }
         StopSessions(d);
         d.RestartDelayMs = 1000;
         d.StartFails = 0;
@@ -958,7 +1172,7 @@ public sealed class DeviceManager : IDisposable
     {
         if (Interlocked.Exchange(ref d.InfoBusy, 1) == 1) return;
         var addr = d.ActiveAddr;
-        if (addr == null) { d.InfoBusy = 0; return; }
+        if (addr == null || IsRecovery(d)) { d.InfoBusy = 0; return; } // recovery không có dumpsys
         _ = Task.Run(async () =>
         {
             try
@@ -1050,6 +1264,6 @@ public sealed class DeviceManager : IDisposable
         stopping = true;
         infoTimer?.Stop(); wifiTimer?.Stop();
         cts.Cancel();
-        foreach (var d in byId.Values) StopSessions(d);
+        foreach (var d in byId.Values) { StopSessions(d); d.Recovery?.Dispose(); }
     }
 }
