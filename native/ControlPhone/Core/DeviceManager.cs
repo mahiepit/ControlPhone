@@ -53,7 +53,7 @@ public sealed class DeviceManager : IDisposable
             await AdbClient.StartServerAsync();
             await AdbClient.TrackDevicesAsync(list => ui.BeginInvoke(() => OnTrack(list)), e => ui.BeginInvoke(() => Log?.Invoke("adb: " + e, true)), cts.Token);
         });
-        infoTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { RefreshAllInfo(); HealUnauthorized(); }, ui);
+        infoTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { RefreshAllInfo(); HealUnauthorized(); DropDeadNetTransports(); }, ui);
         wifiTimer = new DispatcherTimer(TimeSpan.FromSeconds(20), DispatcherPriority.Background, (_, _) => { _ = AutoReconnectWifiAsync(); _ = LanDiscoverAsync(); }, ui);
         if (Store.Settings.LanAuto) _ = Task.Delay(4000).ContinueWith(_ => ui.BeginInvoke(() => _ = LanDiscoverAsync()), TaskScheduler.Default);
         infoTimer.Start(); wifiTimer.Start();
@@ -101,8 +101,14 @@ public sealed class DeviceManager : IDisposable
             bool probeErrorValid = d.Status == "error" && st == "device";
             if (!probeErrorValid && st != d.Status) { d.RestartCts?.Cancel(); Remove(d); }
         }
+        // kết nối qua mạng bị "offline" (máy rời mạng / box gạt về USB): adb giữ mãi mục này. Không hiện ô lỗi cho nó (ô thật của
+        // máy đã báo mất kết nối), và ngắt hẳn nếu quá 30 giây (xem DropDeadNetTransports) — tự nối lại khi máy có mạng lại.
+        long nowMs = Environment.TickCount64;
+        foreach (var k in netOfflineSince.Keys.ToList()) if (seen.GetValueOrDefault(k) != "offline") netOfflineSince.Remove(k);
+        foreach (var x in list.Where(x => x.State == "offline" && AdbClient.IsWifiSerial(x.Addr))) netOfflineSince.TryAdd(x.Addr, nowMs);
         foreach (var x in list)
         {
+            if (x.State == "offline" && AdbClient.IsWifiSerial(x.Addr)) continue;
             if (x.State == "device")
             {
                 if (!serialToId.ContainsKey(x.Addr) && !probing.Contains(x.Addr)) _ = ProbeAsync(x.Addr);
@@ -382,6 +388,19 @@ public sealed class DeviceManager : IDisposable
 
     bool discovering;
     long lastDiscover = -120_000;
+
+    readonly Dictionary<string, long> netOfflineSince = []; // kết nối qua mạng → lúc bắt đầu "offline"
+
+    /// <summary>Ngắt các kết nối qua mạng đã "offline" quá 30 giây (gọi mỗi 20 giây).</summary>
+    void DropDeadNetTransports()
+    {
+        long now = Environment.TickCount64;
+        foreach (var (addr, since) in netOfflineSince.Where(kv => now - kv.Value > 30_000).ToList())
+        {
+            netOfflineSince.Remove(addr);
+            _ = AdbClient.RunAsync(["disconnect", addr], 8000);
+        }
+    }
 
     /// <summary>Thử lại định kỳ cho máy USB vẫn "chờ cho phép" (danh sách adb không đổi thì OnTrack không chạy lại).</summary>
     void HealUnauthorized()

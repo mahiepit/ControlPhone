@@ -104,6 +104,15 @@ if (args.Contains("lanunit"))
     bool decOk1 = (bool)decM.Invoke(null, [rleT, 8, pxT])!, decOk2 = (bool)decM.Invoke(null, [rleT, 8, badT])!;
     Check(decOk1 && pxT.SequenceEqual(new byte[] { 10, 20, 30, 255, 10, 20, 30, 255, 10, 20, 30, 255, 1, 2, 3, 255 }) && !decOk2, "Khung hình recovery: giải nén RLE đúng, dữ liệu lệch kích thước bị từ chối");
     Check(File.Exists(Path.Combine(AppContext.BaseDirectory, "recovery", "cprec-arm64")) && File.Exists(Path.Combine(AppContext.BaseDirectory, "recovery", "cprec-arm")), "Helper recovery được đóng gói kèm app");
+    // kết nối qua mạng "offline" (box gạt về USB): không sinh ô lỗi, quá 30 giây thì được ngắt (địa chỉ giả, không có máy nào)
+    var onTrack = typeof(DeviceManager).GetMethod("OnTrack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+    var dead = new List<AdbDevice> { new("192.168.250.250:5555", "offline", "999"), new("192.168.250.251:5555", "offline", "998") };
+    UiDo(() => onTrack.Invoke(mgrU, [dead]));
+    var offDict = (Dictionary<string, long>)typeof(DeviceManager).GetField("netOfflineSince", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(mgrU)!;
+    Check(Ui(() => mgrU.Devices.Count) == 0 && Ui(() => offDict.Count) == 2, "Kết nối mạng offline: không hiện ô lỗi thừa, được theo dõi để ngắt", Ui(() => $"{mgrU.Devices.Count} ô · theo dõi {offDict.Count}"));
+    UiDo(() => { foreach (var k in offDict.Keys.ToList()) offDict[k] -= 31_000; typeof(DeviceManager).GetMethod("DropDeadNetTransports", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(mgrU, null); });
+    Check(Ui(() => offDict.Count) == 0, "Quá 30 giây: ngắt kết nối mạng đã chết");
+    UiDo(() => onTrack.Invoke(mgrU, [new List<AdbDevice>()]));
     Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
     return 0;
 }
