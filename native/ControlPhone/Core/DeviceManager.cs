@@ -219,16 +219,24 @@ public sealed class DeviceManager : IDisposable
         string st;
         try { st = await AdbClient.ShellAsync(addr, "echo \"P=$(getprop service.adb.tcp.port)/$(getprop persist.adb.tcp.port)\"; ip -o -f inet addr show scope global 2>/dev/null | awk '{print \"IF=\" $2 \" \" $4}'", 10000); }
         catch (Exception e) { return (false, e.Message); }
-        // IP để nhớ: ưu tiên cổng mạng dây (eth), rồi tới WiFi
+        // IP để nhớ: chỉ cổng mạng dây (eth) hoặc WiFi (wlan), ưu tiên mạng dây. Bỏ tun0 (gnirehtet / VPN: 10.0.0.2, PC không
+        // tới được), rmnet (di động)...
         var ip = Regex.Matches(st, @"IF=(\S+) (\d+\.\d+\.\d+\.\d+)").Select(m => (If: m.Groups[1].Value, Ip: m.Groups[2].Value))
-            .OrderBy(x => x.If.StartsWith("eth") ? 0 : x.If.StartsWith("wlan") ? 1 : 2).Select(x => x.Ip).FirstOrDefault() ?? "";
+            .Where(x => x.If.StartsWith("eth") || x.If.StartsWith("wlan")).OrderBy(x => x.If.StartsWith("eth") ? 0 : 1).Select(x => x.Ip).FirstOrDefault() ?? "";
         var cur = Regex.Match(st, @"P=(\d*)/(\d*)");
         bool listening = cur.Groups[1].Value == port.ToString(), persistent = cur.Groups[2].Value == port.ToString();
         if (d.Root)
         {
             var k = await AdbClient.PersistAdbKeyAsync(addr);
             if (!k.Ok) return (false, "Chưa bật (tránh bị hỏi uỷ quyền qua mạng): " + k.Msg);
-            if (!listening || !persistent)
+            if (listening && !persistent)
+            {
+                // đang nghe sẵn (adb tcpip trước đó): chỉ đặt cố định cho lần khởi động sau, KHÔNG khởi động lại adbd (USB không rớt)
+                string o;
+                try { o = await AdbClient.ShellAsync(addr, $"su -c 'setprop persist.adb.tcp.port {port}; echo SET' 2>&1", 15000); } catch (Exception e) { o = e.Message; }
+                if (!o.Contains("SET")) return (false, o.Trim());
+            }
+            else if (!listening)
             {
                 // đánh dấu trước: adbd khởi động lại làm USB rớt ~2 giây rồi máy được nhận lại → không làm lại lần nữa
                 await ui.InvokeAsync(() => { Store.Meta(d.Id).LanReady = true; Store.Save(); });

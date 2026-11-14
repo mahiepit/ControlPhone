@@ -27,6 +27,57 @@ T Ui<T>(Func<T> f) => ui!.Invoke(f);
 void UiDo(Action a) => ui!.Invoke(a);
 
 // an toàn dữ liệu: config.json hỏng KHÔNG được bị ghi đè (dotnet run -c Release -- store) — chạy trên bản sao trong thư mục tạm
+// OTG/LAN bước 1 (máy còn cắm USB): dotnet run -c Release -- lanprep <serial,…> [wifioff]
+// bật ADB qua mạng cố định bằng đúng code của app (PrepareLanAsync); wifioff: tắt WiFi để máy chỉ còn đường mạng dây
+if (args.Contains("lanprep"))
+{
+    var serials = args.SkipWhile(a => a != "lanprep").Skip(1).First().Split(',');
+    UiDo(() => { Store.Load(); I18n.Init("vi"); });
+    var mgrP = Ui(() => new DeviceManager(ui!));
+    foreach (var s in serials)
+    {
+        var dv = Ui(() => new PhoneDevice(s) { ActiveAddr = s, Root = true, Status = "online" });
+        var r = await mgrP.PrepareLanAsync(dv, s);
+        var st = (await AdbClient.ShellAsync(s, "echo $(getprop service.adb.tcp.port)/$(getprop persist.adb.tcp.port)", 8000)).Trim();
+        string wifi = "";
+        if (args.Contains("wifioff"))
+            wifi = " · WiFi " + (await AdbClient.ShellAsync(s, "svc wifi disable; sleep 1; settings get global wifi_on", 15000)).Trim().Replace("0", "đã tắt").Replace("1", "VẪN BẬT");
+        Check(r.Ok && st == "5555/5555", $"{s}: ADB qua mạng cố định cổng 5555", $"{r.Msg} · {st}{wifi}");
+    }
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
+// OTG/LAN bước 2 (box đã gạt sang mạng dây, máy không còn USB): dotnet run -c Release -- lanfind <ip đầu>-<ip cuối> <serial,…>
+// chạy DeviceManager với chế độ OTG/LAN: tự quét LAN, tự kết nối, nhận đúng ô theo serial USB, có hình lưới qua mạng
+if (args.Contains("lanfind"))
+{
+    var range = args.SkipWhile(a => a != "lanfind").Skip(1).First().Split('-');
+    var want = args.SkipWhile(a => a != "lanfind").Skip(2).First().Split(',').ToHashSet();
+    uint IpNum(string ip) => ip.Split('.').Select(uint.Parse).Aggregate(0u, (acc, b) => acc << 8 | b);
+    uint lo = IpNum(range[0]), hi = IpNum(range[1]);
+    DeviceManager.AddrFilter = a => AdbClient.IsWifiSerial(a) && IpNum(a.Split(':')[0]) is var n && n >= lo && n <= hi;
+    UiDo(() => { Store.Load(); I18n.Init("vi"); Store.Settings.LanAuto = true; Store.Settings.LanPorts = "5555"; Store.Settings.ScreenOffOnConnect = false; });
+    var mgrL = Ui(() => new DeviceManager(ui!));
+    var swL = System.Diagnostics.Stopwatch.StartNew();
+    UiDo(() => mgrL.Start());
+    List<PhoneDevice> Online() => Ui(() => mgrL.Devices.Where(d => !d.Pending && d.IsOnline).ToList());
+    while (swL.Elapsed.TotalSeconds < 150 && Online().Count(d => want.Contains(d.Id)) < want.Count) await Task.Delay(1000);
+    double tFound = swL.Elapsed.TotalSeconds;
+    await Task.Delay(8000); // cho luồng lưới kịp có hình
+    var on = Online();
+    foreach (var d in Ui(() => mgrL.Devices.Where(x => !x.Pending).OrderBy(x => x.Num).ToList()))
+        Console.WriteLine(Ui(() => $"  #{d.Num:00} {d.Id,-22} {d.Status,-10} {d.ActiveAddr,-20} khung {d.Frames?.Frames ?? 0} {(want.Contains(d.Id) ? "" : "(ngoài danh sách)")}"));
+    int matched = on.Count(d => want.Contains(d.Id));
+    Check(matched == want.Count, "Tự tìm + kết nối qua mạng dây, nhận đúng ô theo serial USB", $"{matched}/{want.Count} máy sau {tFound:0} giây · {Ui(() => mgrL.Devices.Count(x => !x.Pending))} ô");
+    Check(Ui(() => mgrL.Devices.Count(x => !x.Pending && !want.Contains(x.Id))) == 0, "Không sinh ô trùng / ô lạ");
+    int withVideo = Ui(() => on.Count(d => (d.Frames?.Frames ?? 0) > 0));
+    Check(withVideo >= want.Count - 1, "Có hình lưới qua mạng dây", $"{withVideo}/{on.Count} máy có khung hình");
+    UiDo(() => mgrL.Dispose());
+    Console.WriteLine($"\n>>> {pass} đạt, {fail} lỗi");
+    return 0;
+}
+
 // logic OTG/LAN + recovery, KHÔNG kết nối điện thoại nào: dotnet run -c Release -- lanunit
 if (args.Contains("lanunit"))
 {
