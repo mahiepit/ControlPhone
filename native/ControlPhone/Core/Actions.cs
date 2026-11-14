@@ -256,6 +256,31 @@ public sealed class Actions
         return (Regex.IsMatch(r.Out, "Successfully paired", RegexOptions.IgnoreCase), r.Out);
     }
 
+    /// <summary>
+    /// Mọi địa chỉ máy trong các mạng LAN của PC, theo đúng độ dài mạng (farm lớn dùng /23 = 510 địa chỉ: 192.168.0.x +
+    /// 192.168.1.x). Mạng rộng hơn /22 chỉ quét /22 quanh địa chỉ của PC (tránh quét hàng chục nghìn địa chỉ).
+    /// </summary>
+    public static List<string> LocalHosts()
+    {
+        var res = new HashSet<string>();
+        foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (ni.OperationalStatus != OperationalStatus.Up || Regex.IsMatch(ni.Name + ni.Description, "vEthernet|VirtualBox|VMware|WSL|Hyper-V|Loopback")) continue;
+            foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+            {
+                if (ua.Address.AddressFamily != AddressFamily.InterNetwork || IPAddress.IsLoopback(ua.Address) || ua.Address.ToString().StartsWith("169.254.")) continue;
+                int prefix = Math.Clamp(ua.PrefixLength, 22, 30);
+                var b = ua.Address.GetAddressBytes();
+                uint ip = (uint)b[0] << 24 | (uint)b[1] << 16 | (uint)b[2] << 8 | b[3];
+                uint mask = prefix == 0 ? 0 : uint.MaxValue << (32 - prefix);
+                uint net = ip & mask, bcast = net | ~mask;
+                for (uint h = net + 1; h < bcast; h++)
+                    if (h != ip) res.Add($"{h >> 24}.{(h >> 16) & 255}.{(h >> 8) & 255}.{h & 255}");
+            }
+        }
+        return [.. res];
+    }
+
     public static List<(string Name, string Address, string Subnet)> LocalSubnets()
     {
         var res = new List<(string, string, string)>();

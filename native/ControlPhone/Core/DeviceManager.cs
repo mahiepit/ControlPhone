@@ -151,7 +151,7 @@ public sealed class DeviceManager : IDisposable
     /// <summary>Các (IP, cổng) trong mạng LAN của PC đang mở một trong các cổng, trừ IP cần bỏ qua.</summary>
     static async Task<List<(string Ip, int Port)>> ScanLanAsync(int[] ports, HashSet<string> skipIps)
     {
-        var hosts = Actions.LocalSubnets().Select(s => s.Subnet).Distinct().SelectMany(sn => Enumerable.Range(1, 254).Select(i => $"{sn}.{i}")).Where(h => !skipIps.Contains(h)).ToList();
+        var hosts = Actions.LocalHosts().Where(h => !skipIps.Contains(h)).ToList();
         var open = new System.Collections.Concurrent.ConcurrentBag<(string, int)>();
         using var lim = new SemaphoreSlim(128);
         await Task.WhenAll(hosts.SelectMany(h => ports.Select(port => (h, port))).Select(async x =>

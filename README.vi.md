@@ -82,6 +82,11 @@ Ngôn ngữ giao diện: Tiếng Việt · English · 简体中文 · 繁體中�
   - ControlPhone quét mạng LAN của máy tính 20 giây một lần, tìm điện thoại đang mở ADB qua mạng (cổng 5555, đổi được) và tự kết nối. Cắm máy vào box là máy tự hiện, không phải nhập IP hay bấm quét.
   - Mục *OTG/LAN: bật ADB qua mạng* chuẩn bị các máy đang cắm USB trước khi gạt box sang OTG. Máy root giữ cổng sau khi khởi động lại, và máy root cắm USB lần đầu được tự chuẩn bị.
   - Máy kết nối qua mạng vẫn về đúng ô và số thứ tự như khi cắm USB: ControlPhone đọc serial USB thật của máy (máy root), đúng cả với ROM nhân bản `ro.serialno`.
+  - Phạm vi quét theo đúng mặt nạ mạng của PC (tới /22), nên farm 200 máy dùng mạng /23 vẫn quét đủ.
+  - [`tools/mikrotik/farm-router.rsc`](tools/mikrotik/farm-router.rsc) là cấu hình MikroTik (RouterOS 7) nạp một lần cho farm cỡ đó:
+    - router `192.168.1.1`;
+    - mạng `192.168.0.0/23`, chỉ một nơi cấp IP cho mọi box;
+    - NAT ra modem nhà mạng.
 - **Recovery / TWRP (ControlPhone 2.2+)** — máy khởi động vào recovery vẫn giữ ô và số thứ tự, và hiện màn hình recovery, chạm được, cả trên lưới lẫn màn hình lớn.
   - Recovery không có Android, nên ControlPhone đẩy một helper native nhỏ (`native/recovery/cprec.c`) lên `/tmp` để đọc framebuffer và bơm chạm/phím.
   - Board không màn hình không có thiết bị cảm ứng, nên helper tạo cảm ứng ảo.

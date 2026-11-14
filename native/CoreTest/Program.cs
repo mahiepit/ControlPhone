@@ -83,6 +83,8 @@ if (args.Contains("lanunit"))
 {
     Check(DeviceManager.ParsePorts("5555, 15555;5555 abc 70000").SequenceEqual([5555, 15555]) && DeviceManager.ParsePorts("").SequenceEqual([5555]),
         "Đọc danh sách cổng (bỏ trùng / sai, rỗng → 5555)");
+    var lh = Actions.LocalHosts();
+    Check(lh.Count >= 253 && lh.Count <= 4 * 1022 && !lh.Contains("192.168.1.5"), "Địa chỉ cần quét theo đúng độ dài mạng của PC (không quét chính PC)", $"{lh.Count} địa chỉ · vd {string.Join(", ", lh.Take(2))}");
     var lanPick = DeviceManager.PickLanTargets([("192.168.1.9", 15555), ("192.168.1.9", 5555), ("192.168.1.7", 15555)], [5555, 15555]);
     Check(lanPick.Count == 2 && lanPick.Contains("192.168.1.9:5555") && lanPick.Contains("192.168.1.7:15555"), "Máy mở nhiều cổng: chỉ nối 1 cổng, theo thứ tự ưu tiên", string.Join(" ", lanPick));
     // định danh qua mạng: có serial USB thật → cùng mục với lúc cắm USB (kể cả ROM nhân bản ro.serialno)
