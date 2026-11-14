@@ -230,7 +230,9 @@ public sealed class DeviceManager : IDisposable
         var ip = Regex.Matches(st, @"IF=(\S+) (\d+\.\d+\.\d+\.\d+)").Select(m => (If: m.Groups[1].Value, Ip: m.Groups[2].Value))
             .Where(x => x.If.StartsWith("eth") || x.If.StartsWith("wlan")).OrderBy(x => x.If.StartsWith("eth") ? 0 : 1).Select(x => x.Ip).FirstOrDefault() ?? "";
         var cur = Regex.Match(st, @"P=(\d*)/(\d*)");
-        bool listening = cur.Groups[1].Value == port.ToString(), persistent = cur.Groups[2].Value == port.ToString();
+        // adbd nghe theo service.adb.tcp.port, trống thì theo persist.adb.tcp.port (ROM đặt sẵn cổng cố định)
+        bool persistent = cur.Groups[2].Value == port.ToString();
+        bool listening = cur.Groups[1].Value == port.ToString() || (cur.Groups[1].Value == "" && persistent);
         if (d.Root)
         {
             var k = await AdbClient.PersistAdbKeyAsync(addr);
@@ -561,6 +563,14 @@ public sealed class DeviceManager : IDisposable
             var meta = Store.Meta(hwId);
             if (androidId != "" && meta.AndroidId != androidId) { meta.AndroidId = androidId; Store.Save(); }
             if (type == "wifi") RememberWifi(hwId, addr);
+            // OTG/LAN: máy đã có mạng dây (eth0) mà vẫn chạy gnirehtet (chia Internet từ PC qua USB, VPN tun0) thì mọi kết nối
+            // bị ép vào tun0 — box gạt sang LAN là không còn USB nên máy mất Internet hẳn (đã gặp: 5/20 máy Note 9). Dừng nó để
+            // Android dùng mạng dây; gnirehtet chạy lại được khi box về USB.
+            if (type == "wifi" && Store.Settings.LanAuto)
+                _ = Task.Run(async () =>
+                {
+                    try { await AdbClient.ShellAsync(addr, "ip -o -f inet addr show eth0 2>/dev/null | grep -q inet && ip -o link show tun0 >/dev/null 2>&1 && pidof com.genymobile.gnirehtet >/dev/null && am force-stop com.genymobile.gnirehtet; true", 15000); } catch { }
+                });
             // chế độ OTG/LAN: máy root cắm USB lần đầu → tự bật adb qua mạng (1 lần/máy); chuyển box sang OTG là máy tự hiện lại
             if (Store.Settings.LanAuto && type == "usb" && d.Root && !meta.LanReady) _ = Task.Run(() => PrepareLanAsync(d, addr));
             // máy root: kiểm tra khoá uỷ quyền của PC mỗi lần nhận máy (1 lần/máy/lần chạy) và cấy lại nếu mất → không bao giờ

@@ -38,7 +38,9 @@ if (args.Contains("lanprep"))
     {
         var dv = Ui(() => new PhoneDevice(s) { ActiveAddr = s, Root = true, Status = "online" });
         var r = await mgrP.PrepareLanAsync(dv, s);
-        var st = (await AdbClient.ShellAsync(s, "echo $(getprop service.adb.tcp.port)/$(getprop persist.adb.tcp.port)", 8000)).Trim();
+        // đang nghe 5555 (theo service.adb.tcp.port, hoặc persist khi service trống) + cố định cho lần khởi động sau
+        var raw = (await AdbClient.ShellAsync(s, "echo $(getprop service.adb.tcp.port)/$(getprop persist.adb.tcp.port)/$(cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk '$4==\"0A\"{print $2}' | grep -c ':15B3$')", 8000)).Trim().Split('/');
+        var st = raw.Length == 3 && raw[1] == "5555" && raw[2] != "0" ? "5555/5555" : string.Join("/", raw);
         string wifi = "";
         if (args.Contains("wifioff"))
             wifi = " · WiFi " + (await AdbClient.ShellAsync(s, "svc wifi disable; sleep 1; settings get global wifi_on", 15000)).Trim().Replace("0", "đã tắt").Replace("1", "VẪN BẬT");
