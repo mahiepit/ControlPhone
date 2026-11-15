@@ -189,8 +189,10 @@ public sealed class DeviceManager : IDisposable
             foreach (var a in serialStates.Keys.Where(AdbClient.IsWifiSerial)) skip.Add(a.Split(':')[0]); // IP đã có kết nối
             var open = await ScanLanAsync(ports, skip);
             long now = Environment.TickCount64;
+            // lịch thử thưa riêng của bước quét: cổng vừa quét thấy mở thì adbd đang nghe — không bị chặn bởi những lần
+            // "nối lại theo IP cũ" thất bại lúc box đang chuyển chế độ (máy chưa có mạng, có thể đã giãn tới 10 phút)
             var targets = PickLanTargets(open, ports).Where(a => (AddrFilter?.Invoke(a) ?? true) && !healing.ContainsKey(a)
-                && !(wifiBackoff.TryGetValue(a, out var b) && now < b.NextAt)).ToList();
+                && !(lanBackoff.TryGetValue(a, out var b) && now < b.NextAt)).ToList();
             using var lim = new SemaphoreSlim(8);
             await Task.WhenAll(targets.Select(async t =>
             {
@@ -201,9 +203,9 @@ public sealed class DeviceManager : IDisposable
                     bool ok = r.Out.Contains("connected to", StringComparison.OrdinalIgnoreCase) && !r.Out.Contains("unable", StringComparison.OrdinalIgnoreCase);
                     await ui.InvokeAsync(() =>
                     {
-                        if (ok) { wifiBackoff.Remove(t); return; }
-                        int fails = wifiBackoff.TryGetValue(t, out var old) ? old.Fails + 1 : 1;
-                        wifiBackoff[t] = (fails, Environment.TickCount64 + Math.Min(20_000L << Math.Min(fails, 5), 600_000));
+                        if (ok) { lanBackoff.Remove(t); wifiBackoff.Remove(t); return; }
+                        int fails = lanBackoff.TryGetValue(t, out var old) ? old.Fails + 1 : 1;
+                        lanBackoff[t] = (fails, Environment.TickCount64 + Math.Min(20_000L << Math.Min(fails, 3), 120_000));
                     });
                 }
                 finally { lim.Release(); }
@@ -1276,6 +1278,7 @@ public sealed class DeviceManager : IDisposable
     }
 
     readonly Dictionary<string, (int Fails, long NextAt)> wifiBackoff = [];
+    readonly Dictionary<string, (int Fails, long NextAt)> lanBackoff = []; // riêng cho LanDiscoverAsync (cổng đã quét thấy mở)
 
     // ---------- chẩn đoán ----------
     public sealed record DiagRow(string Addr, string State, string Tid, string Tile, bool Ok, string Note);
