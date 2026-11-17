@@ -118,20 +118,54 @@ public sealed class ModeWindow : Window
         });
     }
 
-    // đọc model từng máy (song song, 1 lần) để danh sách dễ nhận
+    // đọc model từng máy (song song, 1 lần) để danh sách dễ nhận. Máy qua mạng (WiFi / OTG-LAN, địa chỉ là IP:cổng) còn đọc
+    // serial USB thật (cần root, giống DeviceManager.ProbeAsync) → tra đúng số thứ tự của máy đó trong config.
     void FetchModels()
     {
         foreach (var d in devices.Where(x => x.State == "device" && !models.ContainsKey(x.Addr)))
         {
             models[d.Addr] = "";
             var addr = d.Addr;
+            bool net = AdbClient.IsWifiSerial(addr);
             _ = Task.Run(async () =>
             {
-                string m = "";
-                try { m = (await AdbClient.ShellAsync(addr, "getprop ro.product.model", 8000, cts.Token)).Trim(); } catch { }
-                await Dispatcher.InvokeAsync(() => { models[addr] = m; RenderList(); });
+                string m = "", sn = "";
+                try
+                {
+                    var o = await AdbClient.ShellAsync(addr, "getprop ro.product.model" + (net ? "; echo \"USBSN=$(su -c 'cat /config/usb_gadget/*/strings/0x409/serialnumber /sys/class/android_usb/android0/iSerial' 2>/dev/null | head -n1)\"" : ""), 10000, cts.Token);
+                    var lines = o.Split('\n').Select(s => s.Trim()).ToArray();
+                    m = lines.FirstOrDefault(s => !s.StartsWith("USBSN=")) ?? "";
+                    sn = lines.FirstOrDefault(s => s.StartsWith("USBSN="))?[6..] ?? "";
+                }
+                catch { }
+                await Dispatcher.InvokeAsync(() => { models[addr] = m; if (sn.Length >= 6) usbSerials[addr] = sn; RenderList(); });
             });
         }
+    }
+
+    readonly Dictionary<string, string> usbSerials = [];
+
+    /// <summary>
+    /// Thông tin (số thứ tự, tên) của máy trong config. Khoá config là serial USB, nên máy qua mạng phải tra qua serial USB
+    /// thật đọc từ máy, hoặc địa chỉ mạng đã nhớ (DeviceMeta.Wifi) — trước đây chỉ tra theo địa chỉ nên máy LAN/WiFi hiện "#—".
+    /// </summary>
+    DeviceMeta? MetaOf(string addr)
+    {
+        var all = Store.State.Devices;
+        if (!AdbClient.IsWifiSerial(addr))
+        {
+            var serial = AdbClient.SplitAddr(addr).Serial;
+            return all.GetValueOrDefault(serial) ?? all.FirstOrDefault(kv => kv.Key.StartsWith(serial + "#", StringComparison.Ordinal)).Value;
+        }
+        if (usbSerials.TryGetValue(addr, out var sn))
+        {
+            var m = all.GetValueOrDefault(sn) ?? all.FirstOrDefault(kv => kv.Key.StartsWith(sn + "#", StringComparison.Ordinal)).Value;
+            if (m != null) return m;
+        }
+        // chưa đọc được serial USB (máy không root / đang đọc): địa chỉ đã nhớ — chỉ nhận khi đúng 1 máy khớp (IP gắn theo
+        // cổng box, có thể từng thuộc máy khác)
+        var hits = all.Values.Where(m => m.Wifi == addr).Take(2).ToList();
+        return hits.Count == 1 ? hits[0] : null;
     }
 
     void RenderList()
@@ -142,11 +176,10 @@ public sealed class ModeWindow : Window
         var last = Store.Ui.LastSingle;
         var rows = devices.Select(d =>
         {
-            var serial = AdbClient.SplitAddr(d.Addr).Serial;
-            var meta = Store.State.Devices.GetValueOrDefault(serial);
+            var meta = MetaOf(d.Addr);
             return (Dev: d, Num: meta?.Num ?? 0, Label: meta?.Label ?? "", Model: models.GetValueOrDefault(d.Addr) ?? "");
         })
-        .Where(r => q == "" || $"{r.Num} {r.Label} {r.Model} {r.Dev.Addr}".ToLowerInvariant().Contains(q))
+        .Where(r => q == "" || $"{(r.Num > 0 ? $"#{r.Num} h{r.Num}" : "")} {r.Label} {r.Model} {r.Dev.Addr} {usbSerials.GetValueOrDefault(r.Dev.Addr)}".ToLowerInvariant().Contains(q))
         .OrderBy(r => r.Dev.Addr == last ? 0 : 1).ThenBy(r => r.Num == 0 ? int.MaxValue : r.Num).ThenBy(r => r.Dev.Addr)
         .ToList();
         if (devices.Count == 0 || rows.Count == 0)
@@ -170,12 +203,13 @@ public sealed class ModeWindow : Window
         state.SetResourceReference(TextBlock.ForegroundProperty, ready ? "Ok" : "Warn");
         DockPanel.SetDock(state, Dock.Right);
         dp.Children.Add(state);
-        var numT = new TextBlock { Text = num > 0 ? $"#{num:00}" : "#—", FontWeight = FontWeights.Bold, Width = 52, VerticalAlignment = VerticalAlignment.Center };
+        var numT = new TextBlock { Text = num > 0 ? $"#{num:00}" : "#—", FontWeight = FontWeights.Bold, FontSize = 16, Width = 66, VerticalAlignment = VerticalAlignment.Center };
         numT.SetResourceReference(TextBlock.ForegroundProperty, "Accent");
         dp.Children.Add(numT);
         var name = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         name.Children.Add(new TextBlock { Text = label != "" ? label : model != "" ? model : d.Addr, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis });
-        var s2 = new TextBlock { Text = (label != "" && model != "" ? model + " · " : "") + d.Addr + (isLast ? "  ·  " + T("dùng lần trước") : ""), FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
+        var sn = usbSerials.GetValueOrDefault(d.Addr);
+        var s2 = new TextBlock { Text = (label != "" && model != "" ? model + " · " : "") + d.Addr + (sn != null ? "  ·  SN " + sn : "") + (isLast ? "  ·  " + T("dùng lần trước") : ""), FontSize = 11.5, TextTrimming = TextTrimming.CharacterEllipsis };
         s2.SetResourceReference(TextBlock.ForegroundProperty, "Muted");
         name.Children.Add(s2);
         dp.Children.Add(name);
